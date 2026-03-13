@@ -172,3 +172,4 @@ response_*.txt
 # Skills - keep structure, allow local development
 # skills/*/scripts/*.pyc
 # skills/*/tests/.pytest_cache/
+.env
