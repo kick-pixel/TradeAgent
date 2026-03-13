@@ -1,0 +1,37 @@
+# ============================================
+# Solana Meme Trading Agent - Dependencies
+# ============================================
+
+# --------------------------------------------
+# Core Framework (Deep Agents + LangChain)
+# --------------------------------------------
+deepagents-cli[anthropic]>=0.1.0      # Deep Agents framework with Anthropic Claude support
+langchain>=0.3.0                       # Core LangChain library for agent orchestration
+langchain-community>=0.3.0             # Community integrations and tools
+
+# --------------------------------------------
+# Solana Blockchain Integration
+# --------------------------------------------
+solana>=0.35.0                         # Solana Python SDK for RPC interactions
+solders>=0.23.0                        # Solana transaction utilities and types
+spl-token>=0.4.2                       # SPL token operations (mint, transfer, burn)
+
+# --------------------------------------------
+# HTTP Clients (Async + Sync)
+# --------------------------------------------
+aiohttp>=3.9.0                         # Async HTTP client for Solana RPC calls
+requests>=2.32.0                       # Sync HTTP client for REST APIs
+
+# --------------------------------------------
+# Cryptography & Key Management
+# --------------------------------------------
+python-dotenv>=1.0.0                   # Environment variable loading from .env
+cryptography>=42.0.0                   # Key encryption and secure storage
+bip-utils>=2.9.0                       # BIP-39 mnemonic generation and derivation
+keyring>=25.0.0                        # OS-level secure credential storage
+
+# --------------------------------------------
+# Testing & Quality Assurance
+# --------------------------------------------
+pytest>=8.0.0                          # Testing framework
+pytest-cov>=5.0.0                      # Coverage reporting for tests
