@@ -5,9 +5,13 @@
 # --------------------------------------------
 # Core Framework (Deep Agents + LangChain)
 # --------------------------------------------
-deepagents-cli[anthropic]>=0.1.0      # Deep Agents framework with Anthropic Claude support
-langchain>=0.3.0                       # Core LangChain library for agent orchestration
-langchain-community>=0.3.0             # Community integrations and tools
+deepagents-cli>=0.0.32         # Deep Agents framework (langchain-openai included in base)
+langchain>=0.3.0               # Core LangChain library for agent orchestration
+langchain-community>=0.3.0     # Community integrations and tools
+
+# Note: Using OpenAI-compatible mode (DashScope qwen3.5-plus)
+# langchain-openai supports OpenAI-compatible APIs via base_url parameter
+# No [anthropic] extra needed - we don't use Claude API
 
 # --------------------------------------------
 # Solana Blockchain Integration
