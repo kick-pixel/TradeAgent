@@ -326,6 +326,23 @@ class IntentRecognizer:
 
 def get_intent_description(intent: Intent) -> str:
     """Get human-readable intent description."""
+    if intent.type == IntentType.AUTO_INVEST:
+        budget_sol = intent.params.get("budget_sol")
+        budget_usd = intent.params.get("budget_usd")
+        budget = intent.params.get("budget")
+
+        if budget_sol is not None:
+            sol_text = f"{float(budget_sol):g} SOL"
+            if budget_usd is not None:
+                return f"Auto-invest with budget {sol_text} (~{float(budget_usd):.2f} USDT)"
+            return f"Auto-invest with budget {sol_text}"
+
+        if budget_usd is not None:
+            return f"Auto-invest with budget {float(budget_usd):.2f} USDT"
+
+        if budget is not None:
+            return f"Auto-invest with budget {float(budget):g} USDT"
+
     descriptions = {
         IntentType.BUY: f"Buy {intent.params.get('token', 'token')} with {intent.params.get('amount_sol', '?')} SOL",
         IntentType.SELL: f"Sell position {intent.params.get('position_id', '?')}",
@@ -334,7 +351,7 @@ def get_intent_description(intent: Intent) -> str:
         IntentType.STATUS: "Show portfolio status",
         IntentType.POSITIONS: "Show open positions",
         IntentType.HISTORY: "Show trade history",
-        IntentType.AUTO_INVEST: f"Auto-invest with budget {intent.params.get('budget', 10)} USDT",
+        IntentType.AUTO_INVEST: "Auto-invest",
         IntentType.HELP: "Show help",
         IntentType.UNKNOWN: "Unknown intent, falling back to chat",
     }

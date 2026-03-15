@@ -23,7 +23,10 @@ from langgraph.prebuilt import create_react_agent
 from pydantic import SecretStr
 from rich.console import Console
 
+from agent.capabilities import build_capability_help
 from agent.config import config
+from agent.intent import Intent, IntentType
+from agent.prompts import build_solana_meme_system_prompt
 from agent.state import AgentState, Position, Trade, TradeAction, get_state, save_state
 from agent.wallet import get_wallet_manager, get_solana_address
 
@@ -60,6 +63,25 @@ def _looks_incomplete_response(text: str) -> bool:
         "ok,",
     }
     return normalized in incomplete_prefixes
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    """Extract the first JSON object from a model response."""
+    stripped = text.strip()
+    if not stripped:
+        return {}
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(stripped[start : end + 1])
+            except json.JSONDecodeError:
+                return {}
+    return {}
 
 
 class MemeTradingAgent:
@@ -901,72 +923,69 @@ Qualified Opportunities: {len(results)}
 
     def _create_agent(self):
         """Create the LangGraph react agent with trading personality"""
-
-        system_prompt = """You are an expert Solana Meme Coin Trading Agent.
-
-## Your Role
-You analyze Solana meme tokens and make trading decisions to generate profits. You have access to tools for:
-- Market data (prices, trends, liquidity, security audits)
-- Wallet operations (balance checks, swaps)
-- Portfolio management (positions, PnL tracking)
-
-## Trading Strategy
-1. **Discovery**: Find trending or new meme tokens with potential
-2. **Analysis**: Check liquidity, security, transaction volume, and price trends
-3. **Risk Assessment**: Only trade tokens that pass risk checks
-4. **Execution**: Make trades with proper position sizing and risk management
-
-## Risk Rules (CRITICAL)
-- Maximum position: 5% of portfolio value per trade
-- Maximum daily trades: 5
-- Maximum concurrent holdings: 3 tokens
-- Minimum liquidity: $10,000 USD
-- Minimum risk score: 50/100 (higher is safer)
-- Always set stop loss at -15% and take profit at +30%
-
-## Decision Process
-Before any trade:
-1. Use get_token_security to check for honeypots and risks
-2. Use get_token_liquidity to verify sufficient liquidity
-3. Use get_token_tx_info to check trading activity
-4. Use check_risk_rules to validate the trade
-5. Get swap quote and show to user for confirmation
-6. Only execute after explicit user approval
-
-## Communication Style
-- Be concise and direct
-- Show data to support your decisions
-- Explain risks clearly
-- Always ask for confirmation before executing trades
-- Reply in English only
-- Use plain ASCII characters only
-- Avoid filler openings like "I'll" or "Let me"
-
-## Tool Usage Guide (CRITICAL)
-- **get_token_price**: Returns formatted text like "Token: XXX, Price: $0.123". If you see "Error:", report it clearly.
-- **get_swap_quote**: Returns detailed quote with "From:", "To:", "Market:", "Protocol:" fields. 
-  - If you see "No quotes available" or "Quote Error:", the token has NO AVAILABLE PRICE DATA
-  - In this case, DO NOT proceed with trade - inform user price data is unavailable
-- **execute_buy**: Returns "[BUY PREPARATION]" with details if quote succeeds
-  - If you see "Failed to get quote" or "No quotes available", report the specific error
-  - DO NOT retry multiple times - inform user and suggest manual execution
-- **confirm_buy**: Executes the actual trade. Returns transaction ID on success or error message on failure
-  - Common errors: "Invalid request" = quote expired or wrong parameters
-  - Solution: Re-quote with fresh data
-
-## Error Handling
-If ANY tool returns an error:
-1. Read the error message carefully
-2. Report it clearly to the user
-3. DO NOT retry more than 2 times
-4. Suggest alternative (manual execution, different token, etc.)
-
-Remember: Your goal is to generate consistent profits while managing risk. Never FOMO into trades without proper analysis."""
-
         return create_react_agent(
             model=self.llm,
             tools=self.tools,
-            prompt=system_prompt,
+            prompt=build_solana_meme_system_prompt(self.state),
+        )
+
+    def classify_intent_with_llm(
+        self, user_input: str, chat_history: Optional[List[tuple[str, str]]] = None
+    ) -> Intent:
+        """Classify a free-form user request into a supported trading intent."""
+        messages: List[BaseMessage] = [
+            SystemMessage(
+                content=(
+                    "Map the user's request to one supported intent. "
+                    "Valid intents: buy, sell, scan, analyze, status, positions, history, auto_invest, help, unknown. "
+                    "Return JSON only with keys intent, confidence, params. "
+                    "Use params keys token, amount_sol, position_id, limit, budget_usd when relevant. "
+                    "If unsupported, choose unknown.\n\n"
+                    f"{build_capability_help()}"
+                )
+            )
+        ]
+        if chat_history:
+            for role, content in chat_history[-8:]:
+                if role == "human":
+                    messages.append(HumanMessage(content=content))
+                else:
+                    messages.append(AIMessage(content=content))
+        messages.append(HumanMessage(content=user_input))
+
+        response = self.llm.invoke(messages)
+        parsed = _extract_json_object(
+            self._stringify_message_content(getattr(response, "content", ""))
+        )
+
+        intent_name = str(parsed.get("intent", "unknown")).lower()
+        params = parsed.get("params") if isinstance(parsed.get("params"), dict) else {}
+        confidence = parsed.get("confidence", 0.0)
+
+        intent_map = {
+            "buy": IntentType.BUY,
+            "sell": IntentType.SELL,
+            "scan": IntentType.SCAN,
+            "analyze": IntentType.ANALYZE,
+            "status": IntentType.STATUS,
+            "positions": IntentType.POSITIONS,
+            "history": IntentType.HISTORY,
+            "auto_invest": IntentType.AUTO_INVEST,
+            "help": IntentType.HELP,
+            "unknown": IntentType.UNKNOWN,
+        }
+        intent_type = intent_map.get(intent_name, IntentType.UNKNOWN)
+
+        try:
+            confidence_value = float(confidence)
+        except (TypeError, ValueError):
+            confidence_value = 0.0
+
+        return Intent(
+            type=intent_type,
+            params=params,
+            confidence=confidence_value,
+            raw_input=user_input,
         )
 
     def resolve_token_symbol(self, token_contract: str, preferred_symbol: str = "") -> str:
@@ -1148,10 +1167,12 @@ Remember: Your goal is to generate consistent profits while managing risk. Never
             token_contract=token_contract,
             entry_price=entry_price,
             entry_amount=Decimal(str(out_amount)),
+            remaining_amount=Decimal(str(out_amount)),
             entry_value_usd=entry_value_usd,
             entry_tx_id=tx_id,
             stop_loss_price=stop_loss_price,
             take_profit_price=take_profit_price,
+            highest_price=entry_price,
         )
         self.state.positions.append(position)
         self.state.record_trade(
@@ -1413,6 +1434,7 @@ Remember: Your goal is to generate consistent profits while managing risk. Never
         """Run the agent and return structured LangGraph output."""
         # Refresh state
         self.state = get_state()
+        self.agent = self._create_agent()
 
         # Build messages
         messages = []

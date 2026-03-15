@@ -2,97 +2,58 @@
 
 <div align="center">
 
-**AI-Powered Autonomous Trading Agent for Solana Meme Coins**
+Natural-language trading copilot for Solana meme tokens, backed by Bitget Wallet market data and execution.
 
 [![Hackathon](https://img.shields.io/badge/Hackathon-Agent%20Talent%20Show-blue)](https://x.com/i/communities/2031959181063049384)
 [![Track](https://img.shields.io/badge/Track-Bitget%20Wallet-orange)](https://github.com/bitget-wallet-ai-lab/bitget-wallet-skill)
-[![Status](https://img.shields.io/badge/Status-Production%20Ready-green)](.)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Core Modules](#-core-modules) • [CLI Commands](#-cli-commands) • [Examples](#-examples) • [Hackathon](#-hackathon-submission)
+[Quick Start](#quick-start) • [What It Can Do](#what-it-can-do) • [Real Examples](#real-examples) • [CLI Commands](#cli-commands) • [Risk & Exit Strategy](#risk--exit-strategy) • [Architecture](#architecture)
 
 </div>
 
 ---
 
-## 🚀 Features
+## What it can do
 
-| Feature | Description |
-|---------|-------------|
-| 🛡️ **Decision Analysis** | Comprehensive risk assessment before EVERY trade (Security + Liquidity + Activity) |
-| 🤖 **Auto Monitoring** | Autonomous position tracking with automatic stop-loss/take-profit execution |
-| 🎯 **Natural Language** | Chat in English or Chinese - intelligent intent recognition |
-| 🔍 **Token Discovery** | Scan trending Solana meme coins with real-time market data |
-| 🧠 **AI Decision Making** | LLM-powered trading strategy with risk management |
-| 💰 **Safe Execution** | Bitget Wallet API integration with pre-trade security checks |
+This project lets you interact with a Solana meme trading agent in plain language.
 
----
+Current capabilities:
 
-## 🏆 Hackathon Ready
+- scan trending Solana meme tokens
+- analyze a token before trading
+- buy by mint address or common symbol such as `BONK`
+- sell open positions
+- show wallet status, balances, positions, and recent trade history
+- build a small auto-invest plan from trending opportunities
+- monitor open positions continuously and exit automatically based on strategy rules
 
-**Built for**: [Solana Agent Economy Hackathon: Agent Talent Show](https://x.com/i/communities/2031959181063049384)
+The agent keeps short multi-turn conversation memory in `.agent/state.json`, so follow-up requests such as `buy it`, `show my status`, or `sell that position` work better than in a stateless CLI.
 
-| Category | Details |
-|----------|---------|
-| **Track** | Bitget Wallet - $5,000 USDT Prize Pool |
-| **Judging** | Real trading profit performance |
-| **Status** | ✅ Production Ready - Ready to Submit |
+## Key behaviors
 
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────┐
-│   Natural Language Interface            │
-│   (Intent Recognition)                  │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────┐
-│   LLM Agent (Decision Making)           │
-│   - LangGraph + LangChain               │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────┐
-│   Decision Analyzer (Pre-trade Check)   │
-│   - Security Score (40%)                │
-│   - Liquidity Score (30%)               │
-│   - Activity Score (30%)                │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────┐
-│   Skills (Capabilities)                 │
-│   - Scanner, Risk Scorer, Strategy      │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────┐
-│   Bitget Wallet API (Execution)         │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────┐
-│   Position Monitor (Auto-sell)          │
-│   - Stop Loss: -15%                     │
-│   - Take Profit: +30%                   │
-│   - Time Limit: 24h                     │
-└─────────────────────────────────────────┘
-```
+| Capability | Current behavior |
+|---|---|
+| Natural-language chat | `python -m cli.main chat` accepts free-form requests and falls back to LLM intent classification when regex rules do not match |
+| Dedicated trading prompt | The agent uses a Solana meme-specific system prompt with supported workflows and safety rules |
+| Conversation memory | Recent chat turns are persisted and reloaded across sessions |
+| Symbol resolution | Buy/analyze flows can resolve symbols like `BONK` to a Solana mint before analysis |
+| Pre-trade analysis | Every buy runs security, liquidity, and activity checks before execution |
+| Weighted auto-invest | Auto-invest allocates budget by score and liquidity instead of equal splits |
+| Dynamic exits | Monitor now uses partial take profit, breakeven promotion, trailing stop, time stop, and exit attribution |
+| Human confirmation | Live buys, sells, and auto-invest execution still require explicit confirmation |
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
-### Prerequisites
+### Requirements
 
 - Python 3.9+
-- LLM API Key (OpenAI / Qwen / etc.)
-- Solana Wallet (mnemonic phrase)
+- an LLM API key compatible with the configured OpenAI-style endpoint
+- a Solana wallet mnemonic for live trading or monitoring
 
-### 1. Install Dependencies
+### Install
 
 ```bash
 git clone <repository-url>
@@ -100,317 +61,291 @@ cd BestTradeAgent
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment
+### Configure `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your configuration:
+Typical config:
 
 ```bash
-# LLM Configuration (Qwen example)
+# LLM
 OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-OPENAI_API_KEY=sk-your-dashscope-key
+OPENAI_API_KEY=sk-your-key
 OPENAI_MODEL=qwen-plus
 
-# Wallet Configuration
+# Wallet
 MNEMONIC_PHRASE=your-twelve-word-mnemonic
 
-# Trading Parameters (optional)
-MIN_RISK_SCORE=60
+# Risk settings
+MIN_RISK_SCORE=50
 MIN_LIQUIDITY_USD=10000
 STOP_LOSS_PCT=15
 TAKE_PROFIT_PCT=30
+MAX_DAILY_TRADES=5
+MAX_HOLDINGS=3
 ```
 
-### 3. Initialize Agent
+### Initialize
 
 ```bash
 python -m cli.main init
 ```
 
-### 4. Start Trading
+### Start with chat
 
 ```bash
-# Interactive chat (recommended)
 python -m cli.main chat
-
-# Start position monitoring
-python -m cli.main monitor
-
-# Auto-invest with analysis
-python -m cli.main auto-invest --budget 10 --no-dry-run
 ```
 
 ---
 
-## 🧠 Core Modules
+## Real Examples
 
-### 1. Decision Analyzer (`agent/decision.py`)
+These are trimmed from `doc/result.txt` and reflect real project output.
 
-**Pre-trade analysis that runs automatically before every buy:**
+### 1. CLI help
 
-| Component | Weight | Checks |
-|-----------|--------|--------|
-| Security Score | 40% | Honeypot, Taxes, Contract, Permissions |
-| Liquidity Score | 30% | LP Value, Locked Percentage |
-| Activity Score | 30% | Volume, Buyers/Sellers Ratio |
+```text
+$ python -m cli.main --help
 
-**Output:**
-- Risk Level: LOW / MEDIUM / HIGH / VERY_HIGH
-- Recommendation: BUY / WATCH / AVOID
-- Confidence Score: 0-100%
-
-**Example Output:**
-```
-📊 Token Analysis Report: PEPE
-═══════════════════════════════════════════
-🔗 Contract: 7xKX...
-💰 Price: $0.00001234
-📈 24h Change: +25.50%
-
-🛡️ Security Score: 85/100 ✅
-   • Honeypot: ✅ No
-   • Buy Tax: 0%
-   • Sell Tax: 0%
-
-💧 Liquidity Score: 70/100 ✅
-   • Liquidity: $150,000
-
-📊 Activity Score: 65/100 ✅
-   • 24h Volume: $500,000
-   • Buyers: 1,250 | Sellers: 980
-
-💡 Recommendation: 🟢 BUY
-📊 Confidence: 85%
-✅ Analysis PASSED - Ready to execute
+Commands:
+  chat
+  scan
+  analyze
+  status
+  positions
+  auto-invest
+  balance
+  set-wallet
+  trade
+  close
+  monitor
+  init
 ```
 
-### 2. Position Monitor (`agent/monitor.py`)
+### 2. Chat entrypoint
 
-**Autonomous position management:**
-
-- Checks every 60 seconds (configurable)
-- Auto-sells on trigger conditions
-- Updates state and records PnL
-
-**Trigger Conditions:**
-| Condition | Default | Action |
-|-----------|---------|--------|
-| Take Profit | +30% | Sell all |
-| Stop Loss | -15% | Sell all |
-| Time Limit | 24 hours | Sell all |
-
-```bash
-# Start continuous monitoring
-python -m cli.main monitor
-
-# Check once (no continuous loop)
-python -m cli.main monitor --once
-
-# Custom interval
-python -m cli.main monitor --interval 30
-```
-
-### 3. Intent Recognition (`agent/intent.py`)
-
-**Natural language processing for trading commands:**
-
-- Supports English and Chinese
-- Extracts parameters automatically
-- Maps to structured actions
-
-**Examples:**
-```
-"buy PEPE with 0.1 SOL"        → BUY(token=PEPE, amount=0.1)
-"卖出 position abc123"          → SELL(position_id=abc123)
-"扫描热门代币"                  → SCAN(limit=5)
-"analyze 7xKX..."              → ANALYZE(contract=7xKX...)
-"auto invest 20 USDT"          → AUTO_INVEST(budget=20)
-```
-
----
-
-## 💻 CLI Commands
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `chat` | Interactive trading chat | `python -m cli.main chat` |
-| `monitor` | Auto position monitoring | `python -m cli.main monitor` |
-| `scan` | Scan trending tokens | `python -m cli.main scan` |
-| `analyze` | Deep token analysis | `python -m cli.main analyze <contract>` |
-| `status` | Portfolio status | `python -m cli.main status` |
-| `positions` | Open positions | `python -m cli.main positions` |
-| `auto-invest` | Auto invest with analysis | `python -m cli.main auto-invest --budget 10` |
-| `balance` | Wallet balance | `python -m cli.main balance` |
-| `set-wallet` | Set wallet address | `python -m cli.main set-wallet <addr>` |
-| `trade` | Manual trade | `python -m cli.main trade --from SOL --to <token>` |
-| `close` | Close position | `python -m cli.main close <position_id>` |
-| `init` | Initialize agent | `python -m cli.main init` |
-
----
-
-## 📊 Examples
-
-### Chat Mode with Decision Analysis
-
-```bash
+```text
 $ python -m cli.main chat
+
+Solana Meme Trading Agent
+Talk naturally. Try things like:
+  - scan hot Solana memes
+  - analyze this token 7xKX...
+  - buy BONK with 0.05 SOL
+  - sell position abc123
+  - show my portfolio status
+  - auto invest 0.01 SOL
 ```
 
-**Sample Interaction:**
-```
-🟢 Solana Meme Trading Agent
-  Natural language commands supported:
-  • buy <token> with <amount> SOL
-  • sell <position_id>
-  • scan / 扫描
-  • analyze <token>
-  • status / 状态
-  • positions / 持仓
+### 3. Auto-invest example
 
-You: buy PEPE with 0.05 SOL
-识别意图：买入 PEPE 用 0.05 SOL
+```text
+You: auto invest 0.01 SOL
+Intent: Auto-invest with budget 0.01 SOL (~1.50 USDT)
 
-准备买入 PEPE 用 0.05 SOL
-正在执行自动决策分析...
+Found 4 qualified tokens
 
-📊 代币分析报告：PEPE
-═══════════════════════════════════════════
-🛡️ 安全评分：85/100 ✅
-💧 流动性评分：70/100 ✅
-📈 活动评分：65/100 ✅
-
-💡 建议：🟢 买入
-📊 信心度：85%
-
-✅ 分析通过：综合评分良好
-确认执行买入？[y/N]: y
-
-[BUY EXECUTED SUCCESSFULLY]
-Token: PEPE
-Amount: 1000000
-Entry Price: $0.00005
-Stop Loss: $0.0000425 (-15%)
-Take Profit: $0.000065 (+30%)
+Investment Plan
+1. Rosie  Allocation: $0.06 USDT ~= 0.0004 SOL
+2. Punch  Allocation: $0.17 USDT ~= 0.0011 SOL
+3. TRUMP  Allocation: $1.27 USDT ~= 0.0085 SOL
+Total: $1.50 USDT
 ```
 
-### Auto-Monitoring in Action
+That example matters because it shows the current implementation is no longer equal-weighted. Higher-scoring, more liquid names receive more capital.
 
-```bash
+### 4. Monitor strategy summary
+
+```text
 $ python -m cli.main monitor
-```
 
-**Sample Output:**
-```
-🚀 Position Monitor Starting
-⏱️  Check Interval: 60s
-🎯 Take Profit: +30% | Stop Loss: -15%
-⏰ Max Hold: 24h
-
-📊 [14:32:10] Checking 2 positions...
-📈 PEPE: $0.00000012 (+20.0%) | Hold: 2.5h
-📈 DOGE: $0.00000013 (+30.0%) | Hold: 1.2h
-
-⚡ SELL TRIGGERED: DOGE - Take Profit
-💰 Expected: 0.128 SOL
-✅ Sell SUCCESS: DOGE
-🟢 PnL: +$3.20 (+30.0%)
+Initial stop loss: -15.0%
+Partial take profit: +15.0% (sell 50%)
+Breakeven promotion: enabled after partial TP
+Trailing stop: 10.0% on remainder
+Max hold: 24h
 ```
 
 ---
 
-## 🛡️ Risk Management
+## Chat Experience
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| Max Position | 5% | Maximum per trade |
-| Max Daily Trades | 5 | Trades per day limit |
-| Max Holdings | 3 | Concurrent positions |
-| Min Risk Score | 50 | Minimum safety score |
-| Min Liquidity | $10,000 | Minimum LP value |
-| Stop Loss | -15% | Auto-sell trigger |
-| Take Profit | +30% | Auto-sell trigger |
-| Max Hold Time | 24h | Time-based exit |
+The chat flow is the best way to use the agent.
 
----
+Example prompts:
 
-## 🔒 Safety Features
-
-1. **Pre-trade Analysis**: Every buy undergoes comprehensive risk assessment
-2. **Human-in-the-loop**: All trades require explicit user confirmation
-3. **Security Checks**: Automatic honeypot and risk detection
-4. **Secure Key Storage**: Mnemonic derived on-demand, never stored
-5. **Position Tracking**: Complete trade history and PnL accounting
-6. **Auto Risk Management**: Stop-loss and take-profit automatically monitored
-
----
-
-## 📁 Project Structure
-
+```text
+scan hot Solana memes
+analyze this token 7xKX...
+buy BONK with 0.05 SOL
+show my portfolio status
+sell position abc123
+auto invest 0.01 SOL
 ```
+
+What happens during a buy:
+
+1. the input is parsed into a trading intent
+2. if you used a symbol, it is resolved to a Solana mint when possible
+3. the agent runs decision analysis
+4. you see a report with score, liquidity, and recommendation
+5. execution only proceeds after confirmation
+
+If a symbol is ambiguous or cannot be resolved safely, the buy is cancelled with a clear message instead of analyzing fake zero-price data.
+
+---
+
+## CLI Commands
+
+| Command | Purpose | Example |
+|---|---|---|
+| `chat` | Start the natural-language trading chat | `python -m cli.main chat` |
+| `init` | Validate config, skills, wallet, and local state | `python -m cli.main init` |
+| `scan` | Scan and summarize trending tokens | `python -m cli.main scan --limit 5` |
+| `analyze` | Analyze a specific token contract | `python -m cli.main analyze <contract>` |
+| `status` | Show wallet status, PnL, balances, and monitor strategy summary | `python -m cli.main status` |
+| `positions` | Show open positions and strategy-aware exit status | `python -m cli.main positions` |
+| `auto-invest` | Build a weighted investment plan from trending tokens | `python -m cli.main auto-invest --budget 10 --dry-run` |
+| `balance` | Ask the agent for wallet balances | `python -m cli.main balance` |
+| `set-wallet` | Persist a wallet address in local state | `python -m cli.main set-wallet <address>` |
+| `trade` | Prepare a manual swap flow | `python -m cli.main trade --from SOL --to <token> --amount 0.1` |
+| `close` | Close a position by ID | `python -m cli.main close <position_id>` |
+| `monitor` | Monitor open positions and auto-sell on dynamic triggers | `python -m cli.main monitor --interval 60` |
+
+### Notes
+
+- `chat` supports symbol-based buys like `buy BONK with 0.05 SOL`.
+- `analyze` and `trade` still work best with explicit contracts.
+- `auto-invest` CLI mode takes a USDT budget, while chat mode can understand `SOL` or `USDT` phrasing.
+- `positions` and sell previews now show strategy-aware exit text such as `initial SL`, `partial TP`, `breakeven armed`, and `trailing`.
+- `history` now includes exit attribution such as `partial take profit`, `trailing stop`, `stop loss`, or `time stop`.
+
+---
+
+## Risk & Exit Strategy
+
+The project started with simple fixed exits, but the current monitor is more dynamic.
+
+### Portfolio-level controls
+
+| Rule | Default |
+|---|---|
+| Max position size | 5% of portfolio value per trade |
+| Max daily trades | 5 |
+| Max concurrent holdings | 3 |
+| Min liquidity | $10,000 |
+| Min risk score | 50 / 100 |
+
+### Position-level exit strategy
+
+| Stage | Default behavior |
+|---|---|
+| Initial stop loss | -15% |
+| First profit event | +15% partial take profit, sell 50% |
+| After partial TP | stop promoted to breakeven |
+| Remaining size | 10% trailing stop |
+| Time stop | 24h max hold |
+
+Note: the immediate buy execution receipt can still show the initial fixed `Stop Loss` and `Take Profit` prices created at entry time. Once the position is under monitor control, exits follow the dynamic strategy above.
+
+The decision analyzer in `agent/decision.py` scores:
+
+- security: honeypot flags, taxes, permissions
+- liquidity: LP depth and minimum thresholds
+- activity: recent buyers, sellers, and volume
+
+The monitor in `agent/monitor.py` now also includes:
+
+- duplicate-exit protection via `exit_pending`
+- post-trade reconciliation using real order details when available
+- restart recovery for pending exits
+- exit reason attribution persisted to state and trade history
+
+---
+
+## Architecture
+
+```text
+Natural-language chat / CLI
+        ↓
+Intent recognition + LLM fallback
+        ↓
+Solana meme trading prompt + conversation memory
+        ↓
+Decision analyzer (security + liquidity + activity)
+        ↓
+Bitget-backed market data and execution tools
+        ↓
+State persistence + monitor + trade history attribution
+```
+
+Relevant files:
+
+- `cli/main.py` - chat loop, CLI commands, user-facing flows
+- `agent/core.py` - LangGraph/LangChain agent wiring and trading tools
+- `agent/prompts.py` - dedicated Solana meme system prompt
+- `agent/capabilities.py` - supported workflows and chat examples
+- `agent/decision.py` - pre-trade analysis and symbol resolution
+- `agent/allocation.py` - weighted auto-invest allocation
+- `agent/state.py` - positions, trade history, memory, conversation history
+- `agent/monitor.py` - dynamic exit monitoring, reconciliation, recovery
+- `agent/position_display.py` - strategy-aware display text and exit labels
+
+---
+
+## Project Structure
+
+```text
 BestTradeAgent/
 ├── agent/
-│   ├── core.py                 # LLM agent and tools
-│   ├── state.py                # State management
-│   ├── config.py               # Configuration
-│   ├── wallet.py               # Wallet management
-│   ├── monitor.py              # Position monitor ⭐
-│   ├── decision.py             # Decision analyzer ⭐
-│   └── intent.py               # Intent recognition ⭐
+│   ├── allocation.py
+│   ├── capabilities.py
+│   ├── config.py
+│   ├── core.py
+│   ├── decision.py
+│   ├── monitor.py
+│   ├── position_display.py
+│   ├── prompts.py
+│   └── state.py
 ├── cli/
-│   └── main.py                 # CLI entry point
+│   └── main.py
 ├── skills/
-│   ├── bitget-wallet-skill/    # Trading execution
-│   ├── meme-scanner-skill/     # Token discovery
-│   ├── risk-scorer-skill/      # Risk assessment
-│   └── trading-strategy-skill/ # Strategy guidance
+│   ├── bitget-wallet-skill/
+│   ├── meme-scanner-skill/
+│   ├── risk-scorer-skill/
+│   └── trading-strategy-skill/
 ├── tests/
-│   └── test_config.py
+│   ├── test_auto_invest_allocation.py
+│   ├── test_chat_features.py
+│   ├── test_config.py
+│   ├── test_monitor_strategy.py
+│   └── test_token_resolution.py
 ├── doc/
-│   └── DEMAND.md               # Hackathon requirements
-├── README.md                   # This file (English)
-├── README_CN.md                # Chinese version
-└── HACKATHON_SUBMISSION.md     # Submission guide
+│   ├── DEMAND.md
+│   ├── README_CN.md
+└── README.md
 ```
 
 ---
 
-## 🏆 Hackathon Submission
+## Safety Notes
 
-**Competition**: [Solana Agent Economy Hackathon: Agent Talent Show](https://x.com/i/communities/2031959181063049384)
-
-| Category | Details |
-|----------|---------|
-| **Track** | Bitget Wallet - $5,000 USDT |
-| **Prizes** | 1st: $2,500 / 2nd: $1,500 / 3rd: $1,000 |
-| **Judging** | Real trading profit performance |
-| **Status** | ✅ Complete and Ready to Submit |
-
-### Submission Checklist
-
-- [ ] Code repository public
-- [ ] README updated
-- [ ] Demo video recorded
-- [ ] X Article published
-- [ ] Quote RT with @trendsdotfun @solana_devs @BitgetWallet
-- [ ] Hashtag: #AgentTalentShow
-
-See [HACKATHON_SUBMISSION.md](HACKATHON_SUBMISSION.md) for detailed guide.
+- This project can execute real trades if you confirm them.
+- Symbol-based token resolution is best-effort and still safer with an explicit mint.
+- Keep your mnemonic secure. The agent uses it for wallet operations.
+- Always verify what you are buying, especially for meme tokens with duplicate symbols.
 
 ---
 
-## 📄 License
+## Hackathon Context
 
-MIT License - see [LICENSE](LICENSE) for details.
+This repo was built for the Bitget Wallet track of the Solana Agent Economy Hackathon: Agent Talent Show.
 
 ---
 
-<div align="center">
+## License
 
-**Built with ❤️ for the Solana ecosystem**
-
-[Report Bug](../../issues) • [Request Feature](../../issues) • [Hackathon Guide](HACKATHON_SUBMISSION.md)
-
-</div>
+MIT. See `LICENSE`.

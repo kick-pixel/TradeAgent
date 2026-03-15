@@ -5,6 +5,7 @@ Decision Analysis Module - 交易决策分析模块
 """
 
 import json
+import re
 import subprocess
 import sys
 from decimal import Decimal
@@ -73,6 +74,74 @@ class DecisionAnalyzer:
             / "bitget_agent_api.py"
         )
 
+    def _looks_like_contract(self, token_identifier: str) -> bool:
+        """Return whether the identifier already looks like a contract or mint."""
+        return bool(
+            re.fullmatch(r"[A-HJ-NP-Za-km-z1-9]{32,44}", token_identifier)
+            or re.fullmatch(r"0x[a-fA-F0-9]{40}", token_identifier)
+        )
+
+    def resolve_token_contract(self, token_identifier: str, chain: str = "sol") -> Optional[str]:
+        """Resolve a token symbol to a concrete contract address when needed."""
+        candidate = token_identifier.strip()
+        if not candidate:
+            return None
+
+        if self._looks_like_contract(candidate):
+            return candidate
+
+        try:
+            data = self._search_tokens(candidate, chain)
+            tokens = data.get("data", {}).get("list", [])
+            exact_matches = [
+                token
+                for token in tokens
+                if token.get("chain") == chain
+                and token.get("symbol", "").upper() == candidate.upper()
+                and token.get("contract")
+            ]
+            if exact_matches:
+
+                def score(token: Dict[str, Any]) -> tuple[int, float, float, int]:
+                    tag = str(token.get("tag", "")).lower()
+                    coin_tags = token.get("coin_tags", []) or []
+                    verified = any(
+                        str(item.get("tag_code", "")).lower() == "official_verified"
+                        for item in coin_tags
+                        if isinstance(item, dict)
+                    )
+                    official_rank = 2 if verified else 1 if tag == "official" else 0
+                    market_cap = float(token.get("marketCapNum", 0) or 0)
+                    liquidity = float(token.get("liquidity_num", 0) or 0)
+                    holders = int(token.get("holderNum", 0) or 0)
+                    return (official_rank, market_cap, liquidity, holders)
+
+                best_match = max(exact_matches, key=score)
+                return best_match["contract"]
+            return None
+        except Exception:
+            return None
+
+    def _search_tokens(self, keyword: str, chain: str) -> Dict[str, Any]:
+        """Search tokens through the local Bitget API module without console encoding issues."""
+        script_dir = str(Path(self.script_path).parent)
+        python_code = (
+            "import json, sys; "
+            f"sys.path.insert(0, {script_dir!r}); "
+            "import bitget_agent_api; "
+            f"data = bitget_agent_api.search_tokens({keyword!r}, {chain!r}); "
+            "print(json.dumps(data, ensure_ascii=True))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", python_code],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return {}
+        return json.loads(result.stdout)
+
     def analyze_token(self, token_contract: str, chain: str = "sol") -> Optional[AnalysisResult]:
         """
         分析代币，返回综合评估结果
@@ -84,26 +153,31 @@ class DecisionAnalyzer:
         Returns:
             AnalysisResult 或 None（如果分析失败）
         """
-        print(f"[SEARCH] Analyzing token: {token_contract}")
+        resolved_contract = self.resolve_token_contract(token_contract, chain)
+        if not resolved_contract:
+            print(f"[ERROR] Unable to resolve token identifier: {token_contract}")
+            return None
+
+        print(f"[SEARCH] Analyzing token: {resolved_contract}")
 
         # 1. 安全分析
-        security_data = self._get_security_data(token_contract, chain)
+        security_data = self._get_security_data(resolved_contract, chain)
         if not security_data:
             print("[ERROR] Unable to get security data")
             return None
 
         # 2. 流动性分析
-        liquidity_data = self._get_liquidity_data(token_contract, chain)
+        liquidity_data = self._get_liquidity_data(resolved_contract, chain)
 
         # 3. 交易数据分析
-        tx_data = self._get_tx_data(token_contract, chain)
+        tx_data = self._get_tx_data(resolved_contract, chain)
 
         # 4. 价格数据
-        price_data = self._get_price_data(token_contract, chain)
+        price_data = self._get_price_data(resolved_contract, chain)
 
         # 5. 计算综合评分
         result = self._calculate_analysis(
-            token_contract, security_data, liquidity_data, tx_data, price_data
+            resolved_contract, security_data, liquidity_data, tx_data, price_data
         )
 
         return result

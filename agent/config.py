@@ -2,12 +2,12 @@
 Agent Configuration Management
 """
 
-import os
 from pathlib import Path
+import os
 from typing import Optional
 
-from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 # Load .env file
 load_dotenv()
@@ -15,19 +15,32 @@ load_dotenv()
 
 class TradingConfig(BaseModel):
     """Trading parameters configuration"""
+
     default_slippage: float = Field(default=1.0, description="Default slippage tolerance (%)")
     min_liquidity_usd: float = Field(default=10000, description="Minimum liquidity threshold (USD)")
-    min_risk_score: int = Field(default=50, description="Minimum risk score (0-100, higher is safer)")
+    min_risk_score: int = Field(
+        default=50, description="Minimum risk score (0-100, higher is safer)"
+    )
     max_position_pct: float = Field(default=5.0, description="Max position as % of total portfolio")
     max_daily_trades: int = Field(default=5, description="Maximum trades per day")
     max_holdings: int = Field(default=3, description="Maximum concurrent token holdings")
     stop_loss_pct: float = Field(default=15.0, description="Stop loss percentage")
     take_profit_pct: float = Field(default=30.0, description="Take profit percentage")
+    partial_take_profit_pct: float = Field(
+        default=15.0, description="First partial take profit percentage"
+    )
+    partial_take_profit_fraction: float = Field(
+        default=0.5, description="Fraction to sell on first take profit"
+    )
+    trailing_stop_pct: float = Field(
+        default=10.0, description="Trailing stop percentage after first take profit"
+    )
     max_hold_hours: int = Field(default=24, description="Maximum holding time in hours")
 
 
 class LLMConfig(BaseModel):
     """LLM configuration"""
+
     base_url: Optional[str] = Field(default=None, description="OpenAI-compatible API base URL")
     api_key: Optional[str] = Field(default=None, description="API key")
     model: str = Field(default="gpt-4o", description="Model name")
@@ -37,6 +50,7 @@ class LLMConfig(BaseModel):
 
 class WalletConfig(BaseModel):
     """Wallet configuration"""
+
     solana_rpc_url: str = Field(default="https://api.mainnet-beta.solana.com")
     helius_api_key: Optional[str] = Field(default=None)
     # Mnemonic is loaded from secure storage, never stored in config
@@ -44,6 +58,7 @@ class WalletConfig(BaseModel):
 
 class Config(BaseModel):
     """Main configuration"""
+
     llm: LLMConfig = Field(default_factory=LLMConfig)
     trading: TradingConfig = Field(default_factory=TradingConfig)
     wallet: WalletConfig = Field(default_factory=WalletConfig)

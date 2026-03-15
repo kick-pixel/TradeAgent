@@ -8,6 +8,9 @@ from agent.decision import DecisionAnalyzer, should_execute_buy
 from agent.intent import Intent, IntentRecognizer, IntentType, get_intent_description
 from agent.wallet import get_wallet_manager, get_solana_address
 from agent.core import MemeTradingAgent, create_agent
+from agent.capabilities import build_capability_help, get_capability_examples
+from agent.allocation import allocate_auto_invest_budget
+from agent.position_display import describe_exit_reason, describe_position_exit_strategy
 from agent.state import AgentState, get_state, save_state
 from agent.config import config
 import asyncio
@@ -65,6 +68,52 @@ def _normalize_chat_input(user_input: str) -> str:
     return normalized
 
 
+def _handle_unknown_intent(user_input: str) -> str:
+    """Return a stable help-style reply for unsupported free-form chat."""
+    lowered = user_input.lower()
+    if any(phrase in lowered for phrase in ["what can you do", "help", "how to use"]):
+        return build_capability_help()
+
+    return f"I couldn't map that request to a supported action yet.\n\n{build_capability_help()}"
+
+
+def _remember_message(role: str, content: str) -> None:
+    """Persist a chat turn into agent state."""
+    state = get_state()
+    state.add_conversation_message(role, content)
+    save_state(state)
+
+
+def _build_action_acknowledgement(intent: Intent) -> str:
+    """Build a short assistant memory note for an action-oriented turn."""
+    if intent.type == IntentType.HELP:
+        return build_capability_help()
+    return f"Understood. {get_intent_description(intent)}."
+
+
+def _dispatch_chat_intent(intent: Intent, agent: MemeTradingAgent) -> Optional[str]:
+    """Dispatch a recognized intent and return a memory-safe assistant reply when available."""
+    handlers = {
+        IntentType.BUY: _handle_buy_intent,
+        IntentType.SELL: _handle_sell_intent,
+        IntentType.SCAN: _handle_scan_intent,
+        IntentType.ANALYZE: _handle_analyze_intent,
+        IntentType.AUTO_INVEST: _handle_auto_invest_intent,
+        IntentType.STATUS: lambda _intent, _agent: _show_status(),
+        IntentType.POSITIONS: lambda _intent, _agent: _show_positions(),
+        IntentType.HISTORY: lambda _intent, _agent: _show_history(),
+        IntentType.HELP: lambda _intent, _agent: console.print(
+            f"\n[bold green]Agent[/bold green]: {build_capability_help()}"
+        ),
+    }
+    handler = handlers.get(intent.type)
+    if not handler:
+        return None
+
+    handler(intent, agent)
+    return _build_action_acknowledgement(intent)
+
+
 @app.command()
 def chat():
     """
@@ -84,14 +133,9 @@ def chat():
     console.print(
         Panel.fit(
             "[bold green]Solana Meme Trading Agent[/bold green]\n"
-            "[dim]Natural language commands supported:[/dim]\n"
-            "  - buy <token> with <amount> SOL\n"
-            "  - sell <position_id>\n"
-            "  - scan / 扫描\n"
-            "  - analyze <token>\n"
-            "  - status / 状态\n"
-            "  - positions / 持仓\n"
-            "  - auto invest <budget>\n"
+            "[dim]Talk naturally. Try things like:[/dim]\n"
+            + "\n".join(f"  - {example}" for example in get_capability_examples(limit=6))
+            + "\n"
             "[dim]Type 'help' for more commands, 'quit' to exit[/dim]",
             border_style="green",
         )
@@ -109,7 +153,7 @@ def chat():
         console.print("  OPENAI_MODEL=qwen-plus")
         raise typer.Exit(1)
 
-    chat_history = []
+    chat_history = get_state().get_recent_conversation(limit=20)
 
     while True:
         try:
@@ -120,60 +164,25 @@ def chat():
                 console.print("[yellow]Goodbye![/yellow]")
                 break
 
-            if normalized_input.lower() == "help":
-                _show_help()
-                continue
-
-            if normalized_input.lower() in ["status", "状态"]:
-                _show_status()
-                continue
-
-            if normalized_input.lower() in ["positions", "持仓", "position"]:
-                _show_positions()
-                continue
-
-            if normalized_input.lower() in ["history", "历史", "trades"]:
-                _show_history()
-                continue
-
-            if normalized_input.lower() in ["scan", "扫描"]:
-                _handle_scan_intent(Intent(IntentType.SCAN, {"limit": 5}, 1.0, user_input), agent)
-                continue
-
             # 使用意图识别处理自然语言
             intent = intent_recognizer.recognize(normalized_input)
 
+            if intent.type == IntentType.UNKNOWN:
+                intent = agent.classify_intent_with_llm(normalized_input, chat_history)
+
             console.print(f"[dim]Intent: {get_intent_description(intent)}[/dim]")
 
-            # 根据意图类型执行相应操作
-            if intent.type == IntentType.BUY:
-                _handle_buy_intent(intent, agent)
-            elif intent.type == IntentType.SELL:
-                _handle_sell_intent(intent, agent)
-            elif intent.type == IntentType.SCAN:
-                _handle_scan_intent(intent, agent)
-            elif intent.type == IntentType.ANALYZE:
-                _handle_analyze_intent(intent, agent)
-            elif intent.type == IntentType.AUTO_INVEST:
-                _handle_auto_invest_intent(intent, agent)
-            elif intent.type == IntentType.STATUS:
-                _show_status()
-            elif intent.type == IntentType.POSITIONS:
-                _show_positions()
-            elif intent.type == IntentType.HISTORY:
-                _show_history()
-            else:
-                # Unknown intent: use stable plain-text chat fallback
-                with console.status("[bold green]Agent thinking...[/bold green]"):
-                    response = agent.chat_reply(normalized_input, chat_history)
+            _remember_message("human", normalized_input)
+
+            assistant_note = _dispatch_chat_intent(intent, agent)
+
+            if assistant_note is None:
+                response = _handle_unknown_intent(normalized_input)
                 console.print(f"\n[bold green]Agent[/bold green]: {response}")
+                assistant_note = response
 
-                # Update chat history
-                chat_history.append(("human", normalized_input))
-                chat_history.append(("ai", response))
-
-                if len(chat_history) > 20:
-                    chat_history = chat_history[-20:]
+            _remember_message("ai", assistant_note)
+            chat_history = get_state().get_recent_conversation(limit=20)
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Interrupted. Type 'quit' to exit.[/yellow]")
@@ -206,7 +215,9 @@ def _handle_buy_intent(intent, agent):
     analysis = analyzer.analyze_token(token)
 
     if not analysis:
-        console.print("[red]Unable to get analysis data. Buy cancelled.[/red]")
+        console.print(
+            "[red]Unable to resolve or analyze that token. Use a Solana mint address or a unique supported symbol.[/red]"
+        )
         return
 
     # 显示分析报告
@@ -240,7 +251,7 @@ def _handle_buy_intent(intent, agent):
     try:
         console.print("\n[cyan]Step 1: Get trade quote...[/cyan]")
         prepare_result = agent.prepare_buy_transaction(
-            token_contract=token,
+            token_contract=analysis.token_contract,
             token_symbol=analysis.token_symbol,
             amount_sol=amount_sol,
             slippage=config.trading.default_slippage,
@@ -256,7 +267,7 @@ def _handle_buy_intent(intent, agent):
         console.print(f"Protocol: {prepare_result['protocol']}")
 
         execute_result = agent.execute_buy_transaction(
-            token_contract=token,
+            token_contract=analysis.token_contract,
             token_symbol=prepare_result["token_symbol"],
             amount_sol=amount_sol,
             market=prepare_result["market"],
@@ -319,11 +330,7 @@ def _handle_sell_intent(intent, agent):
     console.print(f"\n[bold cyan]Preparing sell for position: {position.token_symbol}[/bold cyan]")
     console.print(f"Entry Price: ${float(position.entry_price):.6f}")
     console.print(f"Entry Amount: {float(position.entry_amount):.4f}")
-
-    if position.stop_loss_price:
-        console.print(f"Stop Loss: ${float(position.stop_loss_price):.6f}")
-    if position.take_profit_price:
-        console.print(f"Take Profit: ${float(position.take_profit_price):.6f}")
+    console.print(f"Exit Strategy: {describe_position_exit_strategy(position)}")
 
     if not Confirm.ask("\n[bold red]Confirm sell execution?[/bold red]"):
         console.print("[yellow]Sell cancelled[/yellow]")
@@ -554,19 +561,20 @@ def _handle_auto_invest_intent(intent, agent):
 
     # 选择前2-3个
     selected = qualified_tokens[: min(3, len(qualified_tokens))]
-    allocation_per_token = budget_usd / len(selected)
+    allocations = allocate_auto_invest_budget(selected, budget_usd)
 
     console.print("\n" + "=" * 60)
     console.print("[bold cyan]Investment Plan[/bold cyan]")
     console.print("=" * 60)
 
     for i, token in enumerate(selected, 1):
-        sol_amount = allocation_per_token / 150  # 假设 SOL=$150
+        allocation_usd = allocations[token["symbol"]]
+        sol_amount = allocation_usd / 150  # 假设 SOL=$150
         console.print(f"\n{i}. {token['symbol']}")
         console.print(f"   Contract: {token['contract'][:20]}...")
         console.print(f"   Score: {token['score']}/100")
         console.print(f"   Price: ${token['price']:.8f}")
-        console.print(f"   Allocation: ${allocation_per_token:.2f} USDT ~= {sol_amount:.4f} SOL")
+        console.print(f"   Allocation: ${allocation_usd:.2f} USDT ~= {sol_amount:.4f} SOL")
 
     console.print(f"\nTotal: ${budget_usd:.2f} USDT")
     console.print("=" * 60)
@@ -580,7 +588,8 @@ def _handle_auto_invest_intent(intent, agent):
     console.print("\n[bold]Executing trades...[/bold]")
 
     for token in selected:
-        sol_amount = allocation_per_token / 150
+        allocation_usd = allocations[token["symbol"]]
+        sol_amount = allocation_usd / 150
         console.print(f"\n[cyan]Buying {token['symbol']}...[/cyan]")
 
         try:
@@ -979,18 +988,8 @@ def _show_help():
     """Show help message"""
     console.print(
         Panel(
-            """[bold]Chat Commands:[/bold]
-  [cyan]scan[/cyan]              - Scan trending tokens and analyze them
-  [cyan]analyze[/cyan]           - Analyze a specific token contract
-  [cyan]auto[/cyan]              - Run auto-invest analysis
-  [cyan]buy <token> <amt>[/cyan] - Prepare to buy a token (e.g., 'buy CONTRACT 0.1')
-  [cyan]sell <position>[/cyan]   - Prepare to sell a position (e.g., 'sell POS_ID')
-  [cyan]status[/cyan]            - Show portfolio status
-  [cyan]positions[/cyan]         - Show open positions
-  [cyan]history[/cyan]           - Show trade history
-  [cyan]balance[/cyan]           - Check wallet balance
-  [cyan]help[/cyan]              - Show this help
-  [cyan]quit[/cyan]              - Exit the agent
+            f"""[bold]Natural Language Chat:[/bold]
+{build_capability_help()}
 
 [bold]CLI Commands:[/bold]
   [cyan]scan[/cyan]              - Scan and analyze tokens
@@ -1092,6 +1091,12 @@ def _show_status():
   Total Trades: {state.total_trades}
   Win Rate: {state.win_rate * 100:.1f}%
   Daily Trades: {state.daily_trade_count}/{config.trading.max_daily_trades}
+
+[bold]Monitor Exit Strategy:[/bold]
+  Initial SL: -{config.trading.stop_loss_pct}%
+  Partial TP: +{config.trading.partial_take_profit_pct}% (sell {config.trading.partial_take_profit_fraction * 100:.0f}%)
+  Breakeven: enabled after partial TP
+  Trailing: {config.trading.trailing_stop_pct}% on remainder
 """,
             title="Portfolio Status",
             border_style="green",
@@ -1127,6 +1132,7 @@ def _show_positions():
     table.add_column("Amount")
     table.add_column("Entry Value")
     table.add_column("Hold Time")
+    table.add_column("Exit Strategy")
 
     for p in state.open_positions:
         table.add_row(
@@ -1136,6 +1142,7 @@ def _show_positions():
             f"{p.entry_amount:.4f}",
             f"${p.entry_value_usd:.2f}",
             f"{p.hold_duration_hours:.1f}h",
+            describe_position_exit_strategy(p),
         )
 
     console.print(table)
@@ -1155,6 +1162,7 @@ def _show_history():
     table.add_column("Token")
     table.add_column("Amount")
     table.add_column("Value")
+    table.add_column("Exit Reason")
 
     for t in state.trades[-20:]:  # Last 20 trades
         table.add_row(
@@ -1163,6 +1171,7 @@ def _show_history():
             t.token_symbol,
             f"{t.amount:.4f}",
             f"${t.value_usd:.2f}",
+            describe_exit_reason(t.exit_reason),
         )
 
     console.print(table)
@@ -1187,7 +1196,11 @@ def monitor(
         python -m cli.main monitor --interval 30      # Check every 30 seconds
         python -m cli.main monitor --once             # Check once and exit
     """
-    from agent.monitor import SimplePositionMonitor, run_monitor_once
+    from agent.monitor import (
+        SimplePositionMonitor,
+        build_monitor_strategy_summary,
+        run_monitor_once,
+    )
     from agent.wallet import get_wallet_manager
 
     wm = get_wallet_manager()
@@ -1207,9 +1220,13 @@ def monitor(
             Panel.fit(
                 "[bold green]🚀 Position Monitor Starting[/bold green]\n"
                 f"Check Interval: [cyan]{interval}s[/cyan]\n"
-                f"Take Profit: [green]+{config.trading.take_profit_pct}%[/green]\n"
-                f"Stop Loss: [red]-{config.trading.stop_loss_pct}%[/red]\n"
-                f"Max Hold: [yellow]{config.trading.max_hold_hours}h[/yellow]\n\n"
+                + build_monitor_strategy_summary()
+                .replace("Initial stop loss: ", "Initial stop loss: [red]")
+                .replace("\nPartial take profit: ", "[/red]\nPartial take profit: [green]")
+                .replace("\nBreakeven promotion: ", "[/green]\nBreakeven promotion: [cyan]")
+                .replace("\nTrailing stop: ", "[/cyan]\nTrailing stop: [yellow]")
+                .replace("\nMax hold: ", "[/yellow]\nMax hold: [yellow]")
+                + "[/yellow]\n\n"
                 "[dim]Press Ctrl+C to stop[/dim]",
                 border_style="green",
             )

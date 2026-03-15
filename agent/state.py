@@ -5,7 +5,6 @@ Tracks portfolio, positions, trade history, and agent memory.
 All state is persisted to allow recovery and analysis.
 """
 
-import json
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -38,6 +37,7 @@ class Position(BaseModel):
     # Entry info
     entry_price: Decimal
     entry_amount: Decimal  # Token amount
+    remaining_amount: Optional[Decimal] = None
     entry_value_usd: Decimal  # USD value at entry
     entry_tx_id: Optional[str] = None
     entry_time: datetime = Field(default_factory=datetime.utcnow)
@@ -48,16 +48,29 @@ class Position(BaseModel):
     exit_value_usd: Optional[Decimal] = None
     exit_tx_id: Optional[str] = None
     exit_time: Optional[datetime] = None
+    exit_reason: Optional[str] = None
 
     status: PositionStatus = PositionStatus.OPEN
 
     # Risk management
     stop_loss_price: Optional[Decimal] = None
     take_profit_price: Optional[Decimal] = None
+    trailing_stop_price: Optional[Decimal] = None
+    highest_price: Optional[Decimal] = None
+    partial_take_profit_taken: bool = False
+    exit_pending: bool = False
+    monitor_state: str = "open"
+    pending_order_id: Optional[str] = None
+    pending_exit_action: Optional[str] = None
+    pending_sell_amount: Optional[Decimal] = None
 
     @property
     def is_open(self) -> bool:
         return self.status == PositionStatus.OPEN
+
+    @property
+    def active_amount(self) -> Decimal:
+        return self.remaining_amount if self.remaining_amount is not None else self.entry_amount
 
     @property
     def pnl_usd(self) -> Optional[Decimal]:
@@ -99,6 +112,7 @@ class Trade(BaseModel):
     # Metadata
     strategy: Optional[str] = None
     notes: Optional[str] = None
+    exit_reason: Optional[str] = None
 
 
 class TokenBalance(BaseModel):
@@ -120,6 +134,14 @@ class AgentMemory(BaseModel):
     token_blacklist: List[str] = Field(default_factory=list)  # Contracts to avoid
     token_whitelist: List[str] = Field(default_factory=list)  # Trusted tokens
     insights: List[str] = Field(default_factory=list)  # Learned insights
+
+
+class ConversationMessage(BaseModel):
+    """A persisted chat message for multi-turn memory."""
+
+    role: str
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AgentState(BaseModel):
@@ -147,6 +169,7 @@ class AgentState(BaseModel):
 
     # Memory
     memory: AgentMemory = Field(default_factory=AgentMemory)
+    conversation_history: List[ConversationMessage] = Field(default_factory=list)
 
     # Stats
     total_pnl_usd: Decimal = Decimal("0")
@@ -188,6 +211,18 @@ class AgentState(BaseModel):
         self.total_trades += 1
         self.daily_trade_count += 1
         self.updated_at = datetime.utcnow()
+
+    def add_conversation_message(self, role: str, content: str) -> None:
+        """Persist a chat message for later multi-turn context."""
+        self.conversation_history.append(ConversationMessage(role=role, content=content))
+        if len(self.conversation_history) > 100:
+            self.conversation_history = self.conversation_history[-100:]
+        self.updated_at = datetime.utcnow()
+
+    def get_recent_conversation(self, limit: int = 20) -> List[tuple[str, str]]:
+        """Return the most recent chat turns as role/content tuples."""
+        recent_messages = self.conversation_history[-limit:]
+        return [(message.role, message.content) for message in recent_messages]
 
     def close_position(
         self, position_id: str, exit_price: Decimal, exit_value_usd: Decimal, exit_tx_id: str
