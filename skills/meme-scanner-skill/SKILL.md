@@ -1,205 +1,168 @@
 ---
-name: meme-scanner-skill
-description: Discover and analyze new meme tokens on Solana by scanning DEX listings, social media trends, and on-chain metrics. Use when identifying early-stage token opportunities or monitoring meme coin launches.
-license: MIT
-compatibility: Python 3.11+, Deep Agents
-metadata:
-  author: Solana Meme Agent Team
-  version: "0.1.0"
-  hackathon: "Solana Agent Economy Hackathon 2026"
+name: meme-scanner
+version: "2026.3.13-1"
+updated: "2026-03-13"
+description: "Discover and analyze Solana meme coins. Use when the user asks about trending tokens, new launches, hot picks, or wants to scan for trading opportunities. Provides token discovery, market data analysis, and activity monitoring."
 ---
 
 # Meme Scanner Skill
 
-## Overview
+## Purpose
 
-This skill provides meme token discovery and analysis capabilities by monitoring DEX new listings, tracking social sentiment, and analyzing on-chain launch patterns. It helps identify potential 100x meme coins while filtering out scams.
+Discover and analyze Solana meme coins for potential trading opportunities. This skill provides data and analysis tools - the AI agent makes all trading decisions based on the information provided.
 
-## When to Activate
+## When to Use
 
-- Scanning for new token launches on Raydium, Orca, Meteora
-- Monitoring Twitter/Telegram for trending meme tokens
-- Analyzing token launch patterns for entry timing
-- Tracking whale wallet acquisitions of new tokens
-- Building watchlist of potential moonshot candidates
+Use this skill when:
+- User asks about trending/hot meme tokens
+- User wants to discover new token launches
+- User wants to analyze market activity for specific tokens
+- User asks for trading opportunities or alpha
 
-## Workflow
+## Tools Available
 
-### 1. New Launch Discovery
+### 1. Trending Tokens Discovery
 
-```bash
-# Scan new Raydium listings (last 24h)
-python scripts/scan_new_listings.py --dex raydium --hours 24
-
-# Real-time launch monitor
-python scripts/launch_monitor.py --min-liquidity 1000 --output alerts.json
-
-# Filter by criteria
-python scripts/scan_new_listings.py --min-liquidity 5000 --max-age-hours 12 --output candidates.json
-```
-
-### 2. Social Sentiment Analysis
+Get currently trending tokens from Bitget Wallet's curated lists.
 
 ```bash
-# Track Twitter mentions
-python scripts/track_twitter.py --token <SYMBOL_OR_MINT> --hours 24
-
-# Analyze Telegram sentiment
-python scripts/analyze_telegram.py --group <GROUP_URL> --hours 12
-
-# Combined social score
-python scripts/social_score.py --token <MINT> --platforms twitter,telegram,discord
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py rankings --name Hotpicks
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py rankings --name topGainers
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py rankings --name topLosers
 ```
 
-### 3. On-Chain Analysis
+**Response includes:**
+- Token symbol, name, contract address
+- Current price and 24h change
+- Market cap and liquidity info
+
+### 2. New Token Discovery
+
+Find recently launched tokens by timestamp.
 
 ```bash
-# Analyze holder distribution
-python scripts/analyze_holders.py --mint <TOKEN_MINT>
-
-# Track creator wallet activity
-python scripts/track_creator.py --mint <TOKEN_MINT>
-
-# Detect bundled launches
-python scripts/detect_bundles.py --mint <TOKEN_MINT> --lookback-hours 6
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py historical-coins --create-time "2026-03-13 00:00:00" --limit 20
 ```
 
-### 4. Token Scoring & Ranking
+**Use this to:**
+- Find newly launched meme coins
+- Detect early opportunities
+- Track token launches over time
+
+### 3. Token Transaction Activity
+
+Analyze trading activity for a specific token.
 
 ```bash
-# Score single token
-python scripts/score_meme.py --mint <TOKEN_MINT>
-
-# Rank all new launches
-python scripts/rank_launches.py --min-score 50 --limit 20
-
-# Generate daily report
-python scripts/daily_report.py --date today --output report.md
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py tx-info --chain sol --contract <TOKEN_ADDRESS>
 ```
 
-## Tool Mapping
+**Response includes:**
+- Buy/sell volume (5m, 1h, 4h, 24h)
+- Number of unique traders
+- Price change percentages
 
-| Script | Purpose | Input | Output |
-|--------|---------|-------|--------|
-| `scan_new_listings.py` | DEX new listing scanner | Dex name, time range, filters | Token list with metadata |
-| `launch_monitor.py` | Real-time launch watch | Liquidity threshold | Alert stream |
-| `track_twitter.py` | Twitter mention tracker | Token symbol/mint | Mention count, sentiment |
-| `analyze_telegram.py` | Telegram sentiment | Group URL | Sentiment score |
-| `social_score.py` | Combined social metrics | Token mint | Composite score |
-| `analyze_holders.py` | Holder distribution | Token mint | Distribution analysis |
-| `track_creator.py` | Creator wallet tracking | Token mint | Creator activity report |
-| `detect_bundles.py` | Bundle/bot detection | Token mint | Bundle analysis |
-| `score_meme.py` | Full meme token score | Token mint | Score 0-100 with breakdown |
-| `rank_launches.py` | Launch ranking | Score threshold | Ranked list |
-| `daily_report.py` | Daily opportunity report | Date | Markdown report |
+### 4. Token Price & Info
 
-## Scoring Criteria
-
-### Launch Quality (40 points)
-- **Liquidity locked**: Yes = +15, No = 0
-- **LP amount**: >100 SOL = +10, 50-100 = +5, <50 = 0
-- **Creator history**: Clean = +10, Previous rugs = -20
-- **Mint/freeze revoked**: Both = +15, One = +5, Neither = 0
-
-### Distribution Quality (25 points)
-- **Top 10 holders**: <30% = +15, 30-50% = +5, >50% = 0
-- **Bundled launches detected**: No = +10, Yes = -15
-
-### Social Momentum (25 points)
-- **Twitter mentions (24h)**: >500 = +10, 100-500 = +5
-- **Telegram members**: >1000 = +10, 500-1000 = +5, <100 = 0
-- **Sentiment**: Positive = +5, Neutral = 0, Negative = -10
-
-### Token Appeal (10 points)
-- **Meme quality**: Viral potential = +10, Generic = +5, Copycat = 0
-- **Website/presence**: Professional = +5, Basic = +2, None = 0
-
-## Output Format
-
-### Token Score
-```json
-{
-  "mint": "7xKX...example",
-  "symbol": "MEME",
-  "name": "Super Meme Coin",
-  "score": 78,
-  "grade": "A",
-  "breakdown": {
-    "launch_quality": 35,
-    "distribution": 22,
-    "social_momentum": 18,
-    "token_appeal": 3
-  },
-  "flags": ["liquidity_locked", "mint_revoked"],
-  "warnings": [],
-  "recommendation": "BUY - Strong candidate"
-}
-```
-
-### New Listing Alert
-```json
-{
-  "alert_type": "new_listing",
-  "mint": "7xKX...example",
-  "symbol": "MOON",
-  "dex": "raydium",
-  "listed_at": "2026-01-15T14:22:00Z",
-  "initial_liquidity_sol": 125.5,
-  "price_usd": 0.000234,
-  "social_links": {
-    "twitter": "https://twitter.com/mooncoin",
-    "telegram": "https://t.me/mooncoin"
-  },
-  "quick_score": 65
-}
-```
-
-## Safety Rules
-
-### DO
-- Always verify liquidity is locked before considering purchase
-- Check creator wallet history for previous rug pulls
-- Wait minimum 30 minutes after launch for initial volatility
-- Cross-reference social links with DexScreener/GeckoTerminal
-- Set stop-loss at -50% for meme trades
-
-### DO NOT
-- Never buy tokens with mint authority still enabled
-- Never chase tokens that already did 10x+ from launch
-- Never invest more than 2 SOL in single meme play
-- Never trust anonymous team without liquidity lock
-- Skip tokens with bundled launches (>20% supply to bots)
-
-## Configuration
-
-```yaml
-dexes:
-  raydium:
-    rpc: "<RPC_URL>"
-    api: "https://api.raydium.io"
-  orca:
-    rpc: "<RPC_URL>"
-
-social_apis:
-  twitter:
-    bearer_token: "<TWITTER_BEARER>"
-  telegram:
-    api_id: "<TELEGRAM_API_ID>"
-    api_hash: "<TELEGRAM_HASH>"
-
-scoring:
-  min_buy_score: 60
-  max_position_sol: 2
-  required_flags: ["liquidity_locked"]
-  auto_reject_flags: ["creator_rug_history", "bundled_launch"]
-```
-
-## Testing
+Get current price and detailed info for a token.
 
 ```bash
-# Run unit tests
-cd tests && pytest test_meme_scanner.py
-
-# Test scan with historical data
-python scripts/scan_new_listings.py --hours 1 --testnet
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py token-info --chain sol --contract <TOKEN_ADDRESS>
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py token-price --chain sol --contract <TOKEN_ADDRESS>
 ```
+
+### 5. K-Line (Candlestick) Data
+
+Get historical price data for trend analysis.
+
+```bash
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py kline --chain sol --contract <TOKEN_ADDRESS> --period 1h --size 24
+```
+
+**Periods available:** 1s, 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
+
+### 6. Token Search
+
+Search for tokens by name, symbol, or contract.
+
+```bash
+python3 ../bitget-wallet-skill/scripts/bitget_agent_api.py search-tokens --keyword "PEPE" --chain sol
+```
+
+## Analysis Framework
+
+When scanning for meme tokens, analyze:
+
+### 1. Market Momentum
+- **Top Gainers**: Tokens with significant price increases
+- **Hot Picks**: Curated trending tokens
+- **Volume**: High trading volume indicates interest
+
+### 2. Activity Signals
+- **Trader Count**: More unique traders = more interest
+- **Buy/Sell Ratio**: More buys than sells = bullish
+- **Volume Trends**: Increasing volume = momentum
+
+### 3. Price Patterns
+- Use K-line data to identify:
+  - Uptrends (higher highs)
+  - Breakouts (volume + price spike)
+  - Consolidation (potential breakout)
+
+## Decision Guidance
+
+**The AI Agent should use this data to make decisions, considering:**
+
+### High-Potential Signals
+- Strong 24h volume (> $100k)
+- Increasing trader count
+- Price uptrend with volume confirmation
+- Positive market sentiment
+
+### Warning Signs
+- Low liquidity (< $10k)
+- Declining trader count
+- Price pumping without volume
+- Recent launch with no track record
+
+## Example Workflow
+
+```
+1. User: "Find me the hottest Solana meme coins right now"
+
+2. Agent actions:
+   a. Run: rankings --name Hotpicks
+   b. For each token in top 5:
+      - Run: tx-info to check activity
+      - Run: kline to check price trend
+   c. Analyze and rank tokens
+   d. Present findings with buy/watch/avoid recommendations
+
+3. Output: Summary of each token with analysis and recommendation
+```
+
+## Chain Codes
+
+| Chain | Code |
+|-------|------|
+| Solana | sol |
+| Ethereum | eth |
+| BNB Chain | bnb |
+| Base | base |
+| Arbitrum | arbitrum |
+
+Use empty string `""` for native token contract (SOL, ETH, etc.)
+
+## Important Notes
+
+1. **Data is for analysis only** - This skill provides market data, not trading signals
+2. **Agent makes decisions** - The AI agent should interpret data and make recommendations
+3. **Always cross-check** - Combine multiple data points before conclusions
+4. **Real-time data** - Prices change rapidly; re-check before trading
+5. **Risk awareness** - Meme coins are highly volatile; always check security
+
+## Related Skills
+
+- `bitget-wallet-skill`: For executing swaps and managing wallet
+- `risk-scorer-skill`: For security audits and risk assessment
+- `trading-strategy-skill`: For position sizing and risk management

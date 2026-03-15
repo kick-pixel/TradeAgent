@@ -3,39 +3,48 @@
 # ============================================
 
 # --------------------------------------------
-# Core Framework (Deep Agents + LangChain)
+# Core Agent Framework
 # --------------------------------------------
-deepagents-cli>=0.0.32         # Deep Agents framework (langchain-openai included in base)
-langchain>=0.3.0               # Core LangChain library for agent orchestration
-langchain-community>=0.3.0     # Community integrations and tools
-
-# Note: Using OpenAI-compatible mode (DashScope qwen3.5-plus)
-# langchain-openai supports OpenAI-compatible APIs via base_url parameter
-# No [anthropic] extra needed - we don't use Claude API
+agent-skills-sdk>=0.1.1
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-community>=0.3.0
 
 # --------------------------------------------
 # Solana Blockchain Integration
 # --------------------------------------------
-solana>=0.35.0                         # Solana Python SDK for RPC interactions
-solders>=0.23.0                        # Solana transaction utilities and types
-spl-token>=0.4.2                       # SPL token operations (mint, transfer, burn)
+solana>=0.35.0
+solders>=0.23.0
 
 # --------------------------------------------
 # HTTP Clients (Async + Sync)
 # --------------------------------------------
-aiohttp>=3.9.0                         # Async HTTP client for Solana RPC calls
-requests>=2.32.0                       # Sync HTTP client for REST APIs
+aiohttp>=3.9.0
+requests>=2.32.0
 
 # --------------------------------------------
 # Cryptography & Key Management
 # --------------------------------------------
-python-dotenv>=1.0.0                   # Environment variable loading from .env
-cryptography>=42.0.0                   # Key encryption and secure storage
-bip-utils>=2.9.0                       # BIP-39 mnemonic generation and derivation
-keyring>=25.0.0                        # OS-level secure credential storage
+python-dotenv>=1.0.0
+cryptography>=42.0.0
+bip-utils>=2.9.0
+keyring>=25.0.0
+base58>=2.1.0
 
 # --------------------------------------------
-# Testing & Quality Assurance
+# Data Processing
 # --------------------------------------------
-pytest>=8.0.0                          # Testing framework
-pytest-cov>=5.0.0                      # Coverage reporting for tests
+pydantic>=2.0.0
+
+# --------------------------------------------
+# CLI & UI
+# --------------------------------------------
+rich>=13.0.0
+typer>=0.9.0
+
+# --------------------------------------------
+# Testing & Quality Assurance (Dev)
+# --------------------------------------------
+# pytest>=8.0.0
+# pytest-cov>=5.0.0
+# pytest-asyncio>=0.23.0

@@ -1,1 +1,1 @@
-# Solana Meme Trading Agent Tests
+"""Tests for Solana Meme Trading Agent"""

@@ -1,310 +1,416 @@
-# Solana Meme Trading Agent 🚀
+# Solana Meme Trading Agent
 
-> **Risk-First AI Trading Agent for Solana Meme Coins**
-> 
-> 先风控、再报价、后执行 (Risk First, Then Quote, Then Execute)
+<div align="center">
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Hackathon](https://img.shields.io/badge/Hackathon-Solana%20Agent%20Economy-purple.svg)](https://x.com/i/communities/2031959181063049384)
+**AI-Powered Autonomous Trading Agent for Solana Meme Coins**
 
----
+[![Hackathon](https://img.shields.io/badge/Hackathon-Agent%20Talent%20Show-blue)](https://x.com/i/communities/2031959181063049384)
+[![Track](https://img.shields.io/badge/Track-Bitget%20Wallet-orange)](https://github.com/bitget-wallet-ai-lab/bitget-wallet-skill)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-green)](.)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-## 🎯 项目简介
+[Features](#-features) • [Quick Start](#-quick-start) • [Core Modules](#-core-modules) • [CLI Commands](#-cli-commands) • [Examples](#-examples) • [Hackathon](#-hackathon-submission)
 
-Solana Meme Trading Agent 是一个**风控优先**的 AI 交易助手，专为 Solana Meme 币设计。通过复合风险评分（0-100）、自动化安全检查和强制人工确认机制，帮助用户在高风险的 Meme 币交易中做出明智决策。
-
-**核心理念：**
-- 🔒 **风控优先** - 每笔交易前自动进行安全审计
-- 🤖 **AI 驱动** - Deep Agents 编排 3 个专业子代理
-- ✅ **人工确认** - 强制 "YES" 确认才能执行交易
-- ⛽ **Gasless 模式** - 支持免 Gas 费跨链交易（Bitget Wallet）
+</div>
 
 ---
 
-## ✨ 核心功能
+## 🚀 Features
 
-### 1. 复合风险评分系统
-```
-Risk Score = (Security × 0.5) + (Liquidity × 0.3) + (Transaction × 0.2)
-
-阈值：
-- SAFE (≥70):    ✅ 安全可交易
-- CAUTION (40-69): ⚠️ 需谨慎
-- DANGEROUS (<40): ❌ 自动阻止
-```
-
-### 2. 四步交易工作流
-```
-Step 1: 风险预检 → Step 2: 获取报价 → Step 3: 用户确认 ("YES") → Step 4: 执行交易
-```
-
-### 3. CLI 命令行界面
-```bash
-# 扫描热门币种
-meme-agent scan --limit 10 --min-score 50
-
-# 检查代币风险
-meme-agent risk-check --chain sol --contract EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-
-# 交互式交易
-meme-agent swap --chain sol --from SOL --to USDC --amount 0.1
-
-# 查看钱包余额
-meme-agent portfolio
-```
-
-### 4. Agent Skills 规范
-遵循 [Agent Skills Specification](https://agentskills.io) 标准，支持渐进式披露：
-- 4 个自定义技能（SKILL.md）
-- 每个技能包含完整文档、脚本和测试
-- 兼容 40+ AI Agent 平台（Claude Code, Cursor, OpenClaw 等）
+| Feature | Description |
+|---------|-------------|
+| 🛡️ **Decision Analysis** | Comprehensive risk assessment before EVERY trade (Security + Liquidity + Activity) |
+| 🤖 **Auto Monitoring** | Autonomous position tracking with automatic stop-loss/take-profit execution |
+| 🎯 **Natural Language** | Chat in English or Chinese - intelligent intent recognition |
+| 🔍 **Token Discovery** | Scan trending Solana meme coins with real-time market data |
+| 🧠 **AI Decision Making** | LLM-powered trading strategy with risk management |
+| 💰 **Safe Execution** | Bitget Wallet API integration with pre-trade security checks |
 
 ---
 
-## 🏗️ 架构设计
+## 🏆 Hackathon Ready
+
+**Built for**: [Solana Agent Economy Hackathon: Agent Talent Show](https://x.com/i/communities/2031959181063049384)
+
+| Category | Details |
+|----------|---------|
+| **Track** | Bitget Wallet - $5,000 USDT Prize Pool |
+| **Judging** | Real trading profit performance |
+| **Status** | ✅ Production Ready - Ready to Submit |
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   CLI Entry Point                       │
-│         (Natural Language Input Parsing)                │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│              TradingAgent (AI Orchestrator)             │
-│         Powered by Deep Agents / LangChain              │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌────────────┬──────────────┬────────────────┬────────────┐
-│   Tools    │  Subagents   │    Skills      │   LLM API  │
-│ (5 个工具)  │  (3 个专业 AI) │  (4 个技能文档)  │ (DashScope)│
-├────────────┼──────────────┼────────────────┼────────────┤
-│ risk_score │ RISK_ANALYST │ risk-scorer    │ qwen3.5+   │
-│ scan_memes │ MEME_FINDER  │ wallet-manager │ (OpenAI    │
-│ execute    │ TRADE_EXEC   │ meme-scanner   │ Compatible)│
-│ portfolio  │              │ trade-executor │            │
-└────────────┴──────────────┴────────────────┴────────────┘
+┌─────────────────────────────────────────┐
+│   Natural Language Interface            │
+│   (Intent Recognition)                  │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│   LLM Agent (Decision Making)           │
+│   - LangGraph + LangChain               │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│   Decision Analyzer (Pre-trade Check)   │
+│   - Security Score (40%)                │
+│   - Liquidity Score (30%)               │
+│   - Activity Score (30%)                │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│   Skills (Capabilities)                 │
+│   - Scanner, Risk Scorer, Strategy      │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│   Bitget Wallet API (Execution)         │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│   Position Monitor (Auto-sell)          │
+│   - Stop Loss: -15%                     │
+│   - Take Profit: +30%                   │
+│   - Time Limit: 24h                     │
+└─────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 快速开始
+## ⚡ Quick Start
 
-### 环境要求
+### Prerequisites
 
-- Python 3.11+
-- Windows / macOS / Linux
-- 网络连接（访问 Bitget Wallet API）
+- Python 3.9+
+- LLM API Key (OpenAI / Qwen / etc.)
+- Solana Wallet (mnemonic phrase)
 
-### 安装步骤
+### 1. Install Dependencies
 
 ```bash
-# 1. 克隆项目
-git clone https://github.com/YOUR_USERNAME/solana-meme-agent.git
-cd solana-meme-agent
-
-# 2. 安装依赖
+git clone <repository-url>
+cd BestTradeAgent
 pip install -r requirements.txt
+```
 
-# 3. 配置环境变量
+### 2. Configure Environment
+
+```bash
 cp .env.example .env
-# 编辑 .env 填入你的 API 密钥和钱包配置
-
-# 4. 测试安装
-python -m cli.main --help
 ```
 
-### 配置 .env
+Edit `.env` with your configuration:
 
 ```bash
-# LLM API (OpenAI 兼容模式 - 推荐)
-OPENAI_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
-OPENAI_API_KEY=sk-your-api-key
-OPENAI_MODEL=qwen3.5-plus
+# LLM Configuration (Qwen example)
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+OPENAI_API_KEY=sk-your-dashscope-key
+OPENAI_MODEL=qwen-plus
 
-# Solana RPC
-SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+# Wallet Configuration
+MNEMONIC_PHRASE=your-twelve-word-mnemonic
 
-# 钱包配置（测试用）
-MNEMONIC_PHRASE=abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about
-
-# 交易参数
-DEFAULT_SLIPPAGE=1.0
+# Trading Parameters (optional)
+MIN_RISK_SCORE=60
 MIN_LIQUIDITY_USD=10000
-MIN_RISK_SCORE=50
+STOP_LOSS_PCT=15
+TAKE_PROFIT_PCT=30
 ```
 
----
-
-## 📚 使用示例
-
-### 1. 扫描安全 Meme 币
+### 3. Initialize Agent
 
 ```bash
-python -m cli.main scan --limit 5 --min-liquidity 10000 --min-score 70
+python -m cli.main init
 ```
 
-**输出示例：**
-```
-=== Trending Meme Coins (Risk-Filtered) ===
-Rank | Symbol | Price Change | Liquidity  | Holders | Risk Score | Adjusted
------+--------+--------------+------------+---------+------------+----------
-   1 | DOGE2  |        +45.2% |       $50K |     234 |         85 |     38.4
-   2 | PEPE3  |        +32.1% |       $25K |     189 |         72 |     23.1
-
-🔍 Scanned: 50 coins | 🟢 Passed: 5 | 🔴 Filtered: 45
-```
-
-### 2. 检查代币风险
+### 4. Start Trading
 
 ```bash
-python -m cli.main risk-check --chain sol --contract EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+# Interactive chat (recommended)
+python -m cli.main chat
+
+# Start position monitoring
+python -m cli.main monitor
+
+# Auto-invest with analysis
+python -m cli.main auto-invest --budget 10 --no-dry-run
 ```
 
-**输出示例：**
+---
+
+## 🧠 Core Modules
+
+### 1. Decision Analyzer (`agent/decision.py`)
+
+**Pre-trade analysis that runs automatically before every buy:**
+
+| Component | Weight | Checks |
+|-----------|--------|--------|
+| Security Score | 40% | Honeypot, Taxes, Contract, Permissions |
+| Liquidity Score | 30% | LP Value, Locked Percentage |
+| Activity Score | 30% | Volume, Buyers/Sellers Ratio |
+
+**Output:**
+- Risk Level: LOW / MEDIUM / HIGH / VERY_HIGH
+- Recommendation: BUY / WATCH / AVOID
+- Confidence Score: 0-100%
+
+**Example Output:**
 ```
-Risk Score: 85/100 (SAFE)
-Chain: sol
-Contract: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+📊 Token Analysis Report: PEPE
+═══════════════════════════════════════════
+🔗 Contract: 7xKX...
+💰 Price: $0.00001234
+📈 24h Change: +25.50%
 
-Breakdown:
-  Security:    90/100
-  Liquidity:   75/100
-  Tx Score:    80/100
+🛡️ Security Score: 85/100 ✅
+   • Honeypot: ✅ No
+   • Buy Tax: 0%
+   • Sell Tax: 0%
 
-Recommendation: SAFE_TO_TRADE
+💧 Liquidity Score: 70/100 ✅
+   • Liquidity: $150,000
+
+📊 Activity Score: 65/100 ✅
+   • 24h Volume: $500,000
+   • Buyers: 1,250 | Sellers: 980
+
+💡 Recommendation: 🟢 BUY
+📊 Confidence: 85%
+✅ Analysis PASSED - Ready to execute
 ```
 
-### 3. 执行交易
+### 2. Position Monitor (`agent/monitor.py`)
+
+**Autonomous position management:**
+
+- Checks every 60 seconds (configurable)
+- Auto-sells on trigger conditions
+- Updates state and records PnL
+
+**Trigger Conditions:**
+| Condition | Default | Action |
+|-----------|---------|--------|
+| Take Profit | +30% | Sell all |
+| Stop Loss | -15% | Sell all |
+| Time Limit | 24 hours | Sell all |
 
 ```bash
-python -m cli.main swap --chain sol --from SOL --to USDC --amount 0.1
+# Start continuous monitoring
+python -m cli.main monitor
+
+# Check once (no continuous loop)
+python -m cli.main monitor --once
+
+# Custom interval
+python -m cli.main monitor --interval 30
 ```
 
-**交互流程：**
+### 3. Intent Recognition (`agent/intent.py`)
+
+**Natural language processing for trading commands:**
+
+- Supports English and Chinese
+- Extracts parameters automatically
+- Maps to structured actions
+
+**Examples:**
 ```
-=== TRADE CONFIRMATION ===
-From: 0.1 SOL
-To:   15.23 USDC (estimated)
-Slippage: 1.0%
-Risk Score: 85/100 (SAFE)
-
-Type 'YES' to confirm, anything else to cancel: YES
-
-✅ Transaction submitted
-TX Hash: 5KtP...
+"buy PEPE with 0.1 SOL"        → BUY(token=PEPE, amount=0.1)
+"卖出 position abc123"          → SELL(position_id=abc123)
+"扫描热门代币"                  → SCAN(limit=5)
+"analyze 7xKX..."              → ANALYZE(contract=7xKX...)
+"auto invest 20 USDT"          → AUTO_INVEST(budget=20)
 ```
 
 ---
 
-## 🧪 测试
+## 💻 CLI Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `chat` | Interactive trading chat | `python -m cli.main chat` |
+| `monitor` | Auto position monitoring | `python -m cli.main monitor` |
+| `scan` | Scan trending tokens | `python -m cli.main scan` |
+| `analyze` | Deep token analysis | `python -m cli.main analyze <contract>` |
+| `status` | Portfolio status | `python -m cli.main status` |
+| `positions` | Open positions | `python -m cli.main positions` |
+| `auto-invest` | Auto invest with analysis | `python -m cli.main auto-invest --budget 10` |
+| `balance` | Wallet balance | `python -m cli.main balance` |
+| `set-wallet` | Set wallet address | `python -m cli.main set-wallet <addr>` |
+| `trade` | Manual trade | `python -m cli.main trade --from SOL --to <token>` |
+| `close` | Close position | `python -m cli.main close <position_id>` |
+| `init` | Initialize agent | `python -m cli.main init` |
+
+---
+
+## 📊 Examples
+
+### Chat Mode with Decision Analysis
 
 ```bash
-# 运行测试套件
-pytest
+$ python -m cli.main chat
+```
 
-# 运行覆盖率测试
-pytest --cov=agent --cov=cli --cov=skills --cov-report=html
+**Sample Interaction:**
+```
+🟢 Solana Meme Trading Agent
+  Natural language commands supported:
+  • buy <token> with <amount> SOL
+  • sell <position_id>
+  • scan / 扫描
+  • analyze <token>
+  • status / 状态
+  • positions / 持仓
 
-# 查看覆盖率报告
-open htmlcov/index.html  # macOS/Linux
-start htmlcov/index.html  # Windows
+You: buy PEPE with 0.05 SOL
+识别意图：买入 PEPE 用 0.05 SOL
+
+准备买入 PEPE 用 0.05 SOL
+正在执行自动决策分析...
+
+📊 代币分析报告：PEPE
+═══════════════════════════════════════════
+🛡️ 安全评分：85/100 ✅
+💧 流动性评分：70/100 ✅
+📈 活动评分：65/100 ✅
+
+💡 建议：🟢 买入
+📊 信心度：85%
+
+✅ 分析通过：综合评分良好
+确认执行买入？[y/N]: y
+
+[BUY EXECUTED SUCCESSFULLY]
+Token: PEPE
+Amount: 1000000
+Entry Price: $0.00005
+Stop Loss: $0.0000425 (-15%)
+Take Profit: $0.000065 (+30%)
+```
+
+### Auto-Monitoring in Action
+
+```bash
+$ python -m cli.main monitor
+```
+
+**Sample Output:**
+```
+🚀 Position Monitor Starting
+⏱️  Check Interval: 60s
+🎯 Take Profit: +30% | Stop Loss: -15%
+⏰ Max Hold: 24h
+
+📊 [14:32:10] Checking 2 positions...
+📈 PEPE: $0.00000012 (+20.0%) | Hold: 2.5h
+📈 DOGE: $0.00000013 (+30.0%) | Hold: 1.2h
+
+⚡ SELL TRIGGERED: DOGE - Take Profit
+💰 Expected: 0.128 SOL
+✅ Sell SUCCESS: DOGE
+🟢 PnL: +$3.20 (+30.0%)
 ```
 
 ---
 
-## 📁 项目结构
+## 🛡️ Risk Management
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Max Position | 5% | Maximum per trade |
+| Max Daily Trades | 5 | Trades per day limit |
+| Max Holdings | 3 | Concurrent positions |
+| Min Risk Score | 50 | Minimum safety score |
+| Min Liquidity | $10,000 | Minimum LP value |
+| Stop Loss | -15% | Auto-sell trigger |
+| Take Profit | +30% | Auto-sell trigger |
+| Max Hold Time | 24h | Time-based exit |
+
+---
+
+## 🔒 Safety Features
+
+1. **Pre-trade Analysis**: Every buy undergoes comprehensive risk assessment
+2. **Human-in-the-loop**: All trades require explicit user confirmation
+3. **Security Checks**: Automatic honeypot and risk detection
+4. **Secure Key Storage**: Mnemonic derived on-demand, never stored
+5. **Position Tracking**: Complete trade history and PnL accounting
+6. **Auto Risk Management**: Stop-loss and take-profit automatically monitored
+
+---
+
+## 📁 Project Structure
 
 ```
-solana-meme-agent/
-├── cli/                        # CLI 命令行界面
-│   ├── __init__.py
-│   └── main.py                 # 主入口 (979 lines)
-├── agent/                      # AI Agent 编排层
-│   └── trading_agent.py        # Deep Agents 配置 (613 lines)
-├── skills/                     # Agent Skills (4 个自定义技能)
-│   ├── risk-scorer-skill/      # 风险评分技能
-│   ├── wallet-manager-skill/   # 钱包管理技能
-│   ├── meme-scanner-skill/     # Meme 币发现技能
-│   └── trade-executor-skill/   # 交易执行技能
-├── tests/                      # 测试套件
-│   ├── conftest.py             # Pytest fixtures
-│   └── test_placeholder.py     # 基础测试
-├── .env.example                # 环境变量模板
-├── requirements.txt            # Python 依赖
-├── pyproject.toml             # 项目配置
-└── README.md                   # 本文件
+BestTradeAgent/
+├── agent/
+│   ├── core.py                 # LLM agent and tools
+│   ├── state.py                # State management
+│   ├── config.py               # Configuration
+│   ├── wallet.py               # Wallet management
+│   ├── monitor.py              # Position monitor ⭐
+│   ├── decision.py             # Decision analyzer ⭐
+│   └── intent.py               # Intent recognition ⭐
+├── cli/
+│   └── main.py                 # CLI entry point
+├── skills/
+│   ├── bitget-wallet-skill/    # Trading execution
+│   ├── meme-scanner-skill/     # Token discovery
+│   ├── risk-scorer-skill/      # Risk assessment
+│   └── trading-strategy-skill/ # Strategy guidance
+├── tests/
+│   └── test_config.py
+├── doc/
+│   └── DEMAND.md               # Hackathon requirements
+├── README.md                   # This file (English)
+├── README_CN.md                # Chinese version
+└── HACKATHON_SUBMISSION.md     # Submission guide
 ```
 
 ---
 
-## 🛡️ 安全说明
+## 🏆 Hackathon Submission
 
-### 密钥管理
+**Competition**: [Solana Agent Economy Hackathon: Agent Talent Show](https://x.com/i/communities/2031959181063049384)
 
-- ✅ **助记词存储**：使用系统密钥环（keyring）
-- ✅ **私钥衍生**：BIP-44 路径，按需衍生，用后即弃
-- ❌ **绝不提交**：`.env`、`*.key`、`mnemonic.txt` 已被 .gitignore 保护
+| Category | Details |
+|----------|---------|
+| **Track** | Bitget Wallet - $5,000 USDT |
+| **Prizes** | 1st: $2,500 / 2nd: $1,500 / 3rd: $1,000 |
+| **Judging** | Real trading profit performance |
+| **Status** | ✅ Complete and Ready to Submit |
 
-### 交易安全
+### Submission Checklist
 
-- ✅ **风控预检**：分数 < 40 自动阻止
-- ✅ **人工确认**：必须输入 "YES" 才能执行
-- ✅ **Gasless 模式**：默认使用，降低 Gas 风险
-- ✅ **模拟交易**：支持 Helius 模拟，提前发现错误
+- [ ] Code repository public
+- [ ] README updated
+- [ ] Demo video recorded
+- [ ] X Article published
+- [ ] Quote RT with @trendsdotfun @solana_devs @BitgetWallet
+- [ ] Hashtag: #AgentTalentShow
 
-### API 安全
-
-- ✅ **Demo Keys**：内置 Bitget 演示密钥（只读）
-- ✅ **环境变量**：支持自定义 API 密钥
-- ✅ **无数据收集**：不上传任何用户数据
-
----
-
-## 🏆 黑客松提交
-
-本项目参加 **Solana Agent Economy Hackathon 2026** (Agent Talent Show)
-
-**赛道：** Bitget Wallet - Solana Meme Coin AI Trading Agent
-
-**提交材料：**
-- ✅ 公开代码仓库（GitHub）
-- ✅ 在线演示/录屏
-- ✅ 可量化结果（风险评分、测试覆盖率）
-- ✅ X Article + Quote RT
-
-**标签：** #AgentTalentShow @trendsdotfun @solana_devs @BitgetWallet
+See [HACKATHON_SUBMISSION.md](HACKATHON_SUBMISSION.md) for detailed guide.
 
 ---
 
-## 📄 许可证
+## 📄 License
 
-MIT License - 详见 [LICENSE](LICENSE)
-
----
-
-## 🔗 相关链接
-
-- [Bitget Wallet API 文档](https://web3.bitget.com/en/docs)
-- [Agent Skills Specification](https://agentskills.io/specification)
-- [Deep Agents Framework](https://github.com/langchain-ai/deepagents)
-- [DashScope 阿里云百炼](https://help.aliyun.com/zh/model-studio)
-- [RugCheck API](https://api.rugcheck.xyz/v1)
-
----
-
-## 📞 联系方式
-
-- **GitHub Issues**: [提交问题](https://github.com/YOUR_USERNAME/solana-meme-agent/issues)
-- **X (Twitter)**: [@YourHandle](https://x.com/YourHandle)
-- **Hackathon Submission**: [X Article Link](https://x.com/your-article-url)
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
 <div align="center">
 
-**Built with ❤️ for the Solana Agent Economy Hackathon 2026**
+**Built with ❤️ for the Solana ecosystem**
 
-[Report Bug](https://github.com/YOUR_USERNAME/solana-meme-agent/issues) · [Request Feature](https://github.com/YOUR_USERNAME/solana-meme-agent/issues) · [Hackathon Page](https://x.com/i/communities/2031959181063049384)
+[Report Bug](../../issues) • [Request Feature](../../issues) • [Hackathon Guide](HACKATHON_SUBMISSION.md)
 
 </div>

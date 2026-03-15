@@ -1,42 +1,4 @@
-# =============================================================================
-# Solana Meme Trading Agent - .gitignore
-# =============================================================================
-# Security-first configuration for handling private keys, API credentials,
-# and wallet information. Protect sensitive cryptographic material.
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# CRITICAL SECURITY - Never commit these
-# -----------------------------------------------------------------------------
-# Environment and configuration secrets
-.env
-.env.*
-!.env.example
-!.env.template
-
-# Private keys and cryptographic material
-*.key
-*.pem
-*.crt
-private_key.json
-wallet.json
-mnemonic.txt
-seed_phrase.txt
-*.secret
-
-# SSH keys
-id_rsa*
-id_ed25519*
-*.ppk
-
-# API credentials
-api_keys.json
-credentials.json
-trading_config.secret.json
-
-# -----------------------------------------------------------------------------
-# Python Artifacts
-# -----------------------------------------------------------------------------
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -54,122 +16,59 @@ parts/
 sdist/
 var/
 wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# -----------------------------------------------------------------------------
-# Virtual Environments
-# -----------------------------------------------------------------------------
+# Virtual environments
+.venv/
+.agent/
+.ruff_cache/
 venv/
 ENV/
 env/
-.venv/
-.env/
 
-# -----------------------------------------------------------------------------
-# Testing (keep test files, ignore cache)
-# -----------------------------------------------------------------------------
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment variables (CRITICAL - never commit)
+.env
+.env.local
+.env.*.local
+
+# Secrets
+*.pem
+*.key
+secrets/
+credentials/
+
+# Agent state and data
+.codebuddy/
+*.json
+!pyproject.json
+
+# Logs
+*.log
+logs/
+
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
-.nox/
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
 
-# Test artifacts (ignore temporary test outputs)
-test_*.txt
-*_test_response.txt
-
-# -----------------------------------------------------------------------------
-# IDE - VS Code
-# -----------------------------------------------------------------------------
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-*.code-workspace
-
-# IDE - PyCharm / IntelliJ
-.idea/
-*.iml
-*.ipr
-*.iws
-
-# IDE - Vim
-*.swp
-*.swo
-*~
-.netrwhist
-
-# -----------------------------------------------------------------------------
-# Logs
-# -----------------------------------------------------------------------------
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-logs/
-
-# -----------------------------------------------------------------------------
-# Operating System
-# -----------------------------------------------------------------------------
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-Desktop.ini
 
-# -----------------------------------------------------------------------------
-# Documentation Build
-# -----------------------------------------------------------------------------
-docs/_build/
-docs/.doctrees/
-
-# -----------------------------------------------------------------------------
-# Python Type Checkers
-# -----------------------------------------------------------------------------
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.pyre/
-
-# -----------------------------------------------------------------------------
-# Jupyter
-# -----------------------------------------------------------------------------
-.ipynb_checkpoints
-
-# -----------------------------------------------------------------------------
-# Trading & Agent-specific
-# -----------------------------------------------------------------------------
-# Trade history and backtest data (if not for version control)
-trades.csv
-orders.csv
-backtest_results/
-live_trading_logs/
-
-# Agent cache and temporary files
-agent_cache/
-.tmp/
+# Temporary files
 *.tmp
-
-# LLM API responses (test artifacts)
-test_*.txt
-response_*.txt
-
-# Skills - keep structure, allow local development
-# skills/*/scripts/*.pyc
-# skills/*/tests/.pytest_cache/
-.env
+*.temp
+tmp/
+temp/
+doc/result.txt
+doc/HACKATHON_SUBMISSION.md

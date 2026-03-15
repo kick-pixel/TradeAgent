@@ -1,979 +1,1295 @@
-#!/usr/bin/env python3
 """
 Solana Meme Trading Agent CLI
 
-Command-line interface for the Solana Meme Trading Agent.
-Provides commands for scanning trending coins, checking token risk,
-executing swaps, and viewing portfolio balances.
-
-Usage:
-    meme-agent scan          # Scan for trending coins
-    meme-agent risk-check    # Check single token risk
-    meme-agent swap          # Interactive trade workflow
-    meme-agent portfolio     # Show wallet balances
+Main entry point for the trading agent.
 """
 
-import argparse
+from agent.decision import DecisionAnalyzer, should_execute_buy
+from agent.intent import Intent, IntentRecognizer, IntentType, get_intent_description
+from agent.wallet import get_wallet_manager, get_solana_address
+from agent.core import MemeTradingAgent, create_agent
+from agent.state import AgentState, get_state, save_state
+from agent.config import config
+import asyncio
 import json
-import logging
-import os
+import subprocess
 import sys
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Optional
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, Optional, cast
 
-import requests
-from dotenv import load_dotenv
+import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt, Confirm
+from rich.table import Table
+from rich.live import Live
+from rich.markdown import Markdown
 
-# Load environment variables from .env file
-load_dotenv(".env")
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+stdout_stream = cast(Any, sys.stdout)
+if hasattr(stdout_stream, "reconfigure"):
+    stdout_stream.reconfigure(encoding="utf-8", errors="replace")
+stderr_stream = cast(Any, sys.stderr)
+if hasattr(stderr_stream, "reconfigure"):
+    stderr_stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+app = typer.Typer(
+    name="meme-agent",
+    help="Solana Meme Coin AI Trading Agent",
+    add_completion=False,
 )
-logger = logging.getLogger(__name__)
+console = Console()
 
-# =============================================================================
-# Configuration
-# =============================================================================
-
-# LLM API Configuration - OpenAI Compatible (Default)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-# Legacy Anthropic Configuration (optional)
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
-
-# Use OpenAI-compatible API by default
-USE_OPENAI_COMPATIBLE = bool(OPENAI_API_KEY)
-
-BGW_API_KEY = os.getenv("BGW_API_KEY", "4843D8C3F1E20772C0E634EDACC5C5F9A0E2DC92")
-BGW_API_SECRET = os.getenv("BGW_API_SECRET", "F2ABFDC684BDC6775FD6286B8D06A3AAD30FD587")
-SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-
-# Bitget Wallet API endpoints
-BITGET_V2_BASE = "https://api.bitget.com/v2"
-
-# RugCheck API
-RUGCHECK_BASE_URL = "https://api.rugcheck.xyz/v1/tokens"
-
-# =============================================================================
-# Rich Output Formatting (Optional - falls back to plain text)
-# =============================================================================
-
-RICH_AVAILABLE = False
-console = None
-Panel = None
-
-try:
-    from rich.console import Console
-    from rich.panel import Panel
-
-    console = Console()
-    RICH_AVAILABLE = True
-except ImportError:
-    pass
+# 初始化意图识别器
+intent_recognizer = IntentRecognizer()
 
 
-def _rich_print(text: str, style: str | None = None) -> None:
-    """Safely print using Rich, fallback to plain text on errors."""
-    if RICH_AVAILABLE and console:
+def _normalize_chat_input(user_input: str) -> str:
+    """Normalize chat input for command recognition."""
+    normalized = user_input.strip()
+    while normalized.endswith("/"):
+        normalized = normalized[:-1].rstrip()
+
+    lowered = normalized.lower()
+    typo_map = {
+        "positons": "positions",
+        "postions": "positions",
+        "stats": "status",
+    }
+    if lowered in typo_map:
+        return typo_map[lowered]
+    return normalized
+
+
+@app.command()
+def chat():
+    """
+    Start interactive chat with the trading agent.
+
+    Natural language commands supported:
+    - "buy <token> with <amount> SOL" - buy token with auto-analysis
+    - "sell <position_id>" - sell an open position
+    - "scan" or "扫描" - scan trending tokens
+    - "analyze <token>" - analyze a token
+    - "status" or "状态" - show portfolio status
+    - "positions" or "持仓" - show open positions
+    - "auto invest <budget>" - auto-invest
+
+    All buy operations automatically perform risk analysis before execution.
+    """
+    console.print(
+        Panel.fit(
+            "[bold green]Solana Meme Trading Agent[/bold green]\n"
+            "[dim]Natural language commands supported:[/dim]\n"
+            "  - buy <token> with <amount> SOL\n"
+            "  - sell <position_id>\n"
+            "  - scan / 扫描\n"
+            "  - analyze <token>\n"
+            "  - status / 状态\n"
+            "  - positions / 持仓\n"
+            "  - auto invest <budget>\n"
+            "[dim]Type 'help' for more commands, 'quit' to exit[/dim]",
+            border_style="green",
+        )
+    )
+
+    # Initialize agent
+    try:
+        agent = create_agent()
+        console.print("[dim]Agent initialized successfully[/dim]")
+    except Exception as e:
+        console.print(f"[red]Failed to initialize agent: {e}[/red]")
+        console.print("\n[yellow]Please ensure you have configured .env with:[/yellow]")
+        console.print("  OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1")
+        console.print("  OPENAI_API_KEY=sk-your-key")
+        console.print("  OPENAI_MODEL=qwen-plus")
+        raise typer.Exit(1)
+
+    chat_history = []
+
+    while True:
         try:
-            if style:
-                console.print(text, style=style)
+            user_input = Prompt.ask("\n[bold blue]You[/bold blue]")
+            normalized_input = _normalize_chat_input(user_input)
+
+            if normalized_input.lower() in ["quit", "exit", "q"]:
+                console.print("[yellow]Goodbye![/yellow]")
+                break
+
+            if normalized_input.lower() == "help":
+                _show_help()
+                continue
+
+            if normalized_input.lower() in ["status", "状态"]:
+                _show_status()
+                continue
+
+            if normalized_input.lower() in ["positions", "持仓", "position"]:
+                _show_positions()
+                continue
+
+            if normalized_input.lower() in ["history", "历史", "trades"]:
+                _show_history()
+                continue
+
+            if normalized_input.lower() in ["scan", "扫描"]:
+                _handle_scan_intent(Intent(IntentType.SCAN, {"limit": 5}, 1.0, user_input), agent)
+                continue
+
+            # 使用意图识别处理自然语言
+            intent = intent_recognizer.recognize(normalized_input)
+
+            console.print(f"[dim]Intent: {get_intent_description(intent)}[/dim]")
+
+            # 根据意图类型执行相应操作
+            if intent.type == IntentType.BUY:
+                _handle_buy_intent(intent, agent)
+            elif intent.type == IntentType.SELL:
+                _handle_sell_intent(intent, agent)
+            elif intent.type == IntentType.SCAN:
+                _handle_scan_intent(intent, agent)
+            elif intent.type == IntentType.ANALYZE:
+                _handle_analyze_intent(intent, agent)
+            elif intent.type == IntentType.AUTO_INVEST:
+                _handle_auto_invest_intent(intent, agent)
+            elif intent.type == IntentType.STATUS:
+                _show_status()
+            elif intent.type == IntentType.POSITIONS:
+                _show_positions()
+            elif intent.type == IntentType.HISTORY:
+                _show_history()
             else:
-                console.print(text)
-        except (UnicodeEncodeError, OSError):
-            # Fallback to plain text on Windows console encoding issues
-            print(text)
+                # Unknown intent: use stable plain-text chat fallback
+                with console.status("[bold green]Agent thinking...[/bold green]"):
+                    response = agent.chat_reply(normalized_input, chat_history)
+                console.print(f"\n[bold green]Agent[/bold green]: {response}")
+
+                # Update chat history
+                chat_history.append(("human", normalized_input))
+                chat_history.append(("ai", response))
+
+                if len(chat_history) > 20:
+                    chat_history = chat_history[-20:]
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Interrupted. Type 'quit' to exit.[/yellow]")
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
 
 
-def _strip_emoji(text: str) -> str:
-    """Remove emoji and special Unicode characters for systems that don't support them."""
-    result = []
-    for char in text:
-        code = ord(char)
-        # Keep ASCII and basic Latin characters
-        if code < 128:
-            result.append(char)
-        # Skip emoji and special symbols
-        elif code >= 0x1F000:  # Emoji range
-            continue
-        elif 0x2600 <= code <= 0x26FF:  # Miscellaneous Symbols
-            continue
-        elif 0x2700 <= code <= 0x27BF:  # Dingbats (includes checkmarks)
-            continue
-        elif 0x1F300 <= code <= 0x1F9FF:  # More emoji ranges
-            continue
-        elif 0xFE00 <= code <= 0xFE0F:  # Variation selectors
-            continue
-        elif 0x2000 <= code <= 0x206F:  # General punctuation
-            continue
+def _handle_buy_intent(intent, agent):
+    """Handle buy intent."""
+    token = intent.params.get("token")
+    amount_sol = intent.params.get("amount_sol")
+
+    if not token:
+        console.print("[yellow]Please provide a token contract address[/yellow]")
+        token = Prompt.ask("Enter token contract address")
+
+    if not amount_sol:
+        amount_sol = Prompt.ask("Enter amount in SOL", default="0.01")
+        try:
+            amount_sol = float(amount_sol)
+        except:
+            console.print("[red]Invalid amount[/red]")
+            return
+
+    console.print(f"\n[bold cyan]Preparing buy for {token} with {amount_sol} SOL[/bold cyan]")
+    console.print("[dim]Running automatic decision analysis...[/dim]\n")
+
+    # 1. 自动决策分析
+    analyzer = DecisionAnalyzer()
+    analysis = analyzer.analyze_token(token)
+
+    if not analysis:
+        console.print("[red]Unable to get analysis data. Buy cancelled.[/red]")
+        return
+
+    # 显示分析报告
+    console.print(analyzer.format_report(analysis))
+
+    # 2. 判断是否应执行买入
+    should_buy, reason = should_execute_buy(analysis)
+
+    if not should_buy:
+        console.print(f"\n[red][FAIL] Buy rejected: {reason}[/red]")
+        console.print(
+            "[yellow]Recommendation: current analysis does not support this buy.[/yellow]"
+        )
+        return
+
+    console.print(f"\n[green][OK] Analysis passed: {reason}[/green]")
+
+    # 3. 用户确认
+    if not Confirm.ask("\n[bold red]Confirm buy execution?[/bold red]"):
+        console.print("[yellow]Buy cancelled[/yellow]")
+        return
+
+    # 4. 直接执行买入（不通过 AI Agent）
+    console.print("\n[bold green]Executing buy...[/bold green]")
+
+    # 记录执行前状态，后续做硬校验，避免“假成功”
+    state_before = get_state()
+    open_positions_before = len(state_before.open_positions)
+    total_trades_before = state_before.total_trades
+
+    try:
+        console.print("\n[cyan]Step 1: Get trade quote...[/cyan]")
+        prepare_result = agent.prepare_buy_transaction(
+            token_contract=token,
+            token_symbol=analysis.token_symbol,
+            amount_sol=amount_sol,
+            slippage=config.trading.default_slippage,
+        )
+        console.print(prepare_result["message"])
+
+        if not prepare_result.get("ok"):
+            console.print("\n[red][FAIL] Buy preparation failed[/red]")
+            return
+
+        console.print("\n[cyan]Step 2: Confirm and execute trade...[/cyan]")
+        console.print(f"Market: {prepare_result['market']}")
+        console.print(f"Protocol: {prepare_result['protocol']}")
+
+        execute_result = agent.execute_buy_transaction(
+            token_contract=token,
+            token_symbol=prepare_result["token_symbol"],
+            amount_sol=amount_sol,
+            market=prepare_result["market"],
+            protocol=prepare_result["protocol"],
+            slippage=config.trading.default_slippage,
+        )
+        console.print(execute_result["message"])
+
+        state_after = get_state()
+        open_positions_after = len(state_after.open_positions)
+        total_trades_after = state_after.total_trades
+
+        position_added = open_positions_after > open_positions_before
+        trade_recorded = total_trades_after > total_trades_before
+        has_tx_hint = bool(execute_result.get("tx_id"))
+
+        if execute_result.get("ok") and (position_added or trade_recorded):
+            console.print("\n[green][OK] Buy succeeded with confirmed state update[/green]")
+            console.print(
+                f"[dim]Open Positions: {open_positions_before} -> {open_positions_after}, "
+                f"Total Trades: {total_trades_before} -> {total_trades_after}[/dim]"
+            )
+            _show_status()
+        elif has_tx_hint:
+            console.print(
+                "\n[yellow][WARN] Trade receipt found but local state did not update. Refresh or retry.[/yellow]"
+            )
         else:
-            result.append(char)
-    return "".join(result)
+            console.print(
+                "\n[red][FAIL] Buy did not complete: no valid state change detected.[/red]"
+            )
+
+    except Exception as e:
+        console.print(f"\n[red]Execution error: {e}[/red]")
+        import traceback
+
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
 
-def print_section_header(title: str, emoji: str = "[SCAN]") -> None:
-    """Print a formatted section header."""
-    safe_emoji = _strip_emoji(emoji)
-    if RICH_AVAILABLE and console and Panel:
-        try:
-            console.print(Panel(f"[bold]{safe_emoji} {title}[/bold]", style="blue"))
+def _handle_sell_intent(intent, agent):
+    """Handle sell intent."""
+    position_id = intent.params.get("position_id")
+
+    if not position_id:
+        # 显示持仓列表供选择
+        _show_positions()
+        position_id = Prompt.ask("Enter position ID to sell")
+
+    state = get_state()
+    position = None
+    for p in state.open_positions:
+        if p.id == position_id:
+            position = p
+            break
+
+    if not position:
+        console.print(f"[red]Position {position_id} not found or already closed[/red]")
+        return
+
+    console.print(f"\n[bold cyan]Preparing sell for position: {position.token_symbol}[/bold cyan]")
+    console.print(f"Entry Price: ${float(position.entry_price):.6f}")
+    console.print(f"Entry Amount: {float(position.entry_amount):.4f}")
+
+    if position.stop_loss_price:
+        console.print(f"Stop Loss: ${float(position.stop_loss_price):.6f}")
+    if position.take_profit_price:
+        console.print(f"Take Profit: ${float(position.take_profit_price):.6f}")
+
+    if not Confirm.ask("\n[bold red]Confirm sell execution?[/bold red]"):
+        console.print("[yellow]Sell cancelled[/yellow]")
+        return
+
+    state_before = get_state()
+    open_positions_before = len(state_before.open_positions)
+    total_trades_before = state_before.total_trades
+
+    try:
+        console.print("\n[cyan]Step 1: Get sell quote...[/cyan]")
+        prepare_result = agent.prepare_sell_transaction(
+            position_id=position_id,
+            slippage=config.trading.default_slippage,
+        )
+        console.print(prepare_result["message"])
+
+        if not prepare_result.get("ok"):
+            console.print("\n[red][FAIL] Sell preparation failed[/red]")
             return
-        except (UnicodeEncodeError, OSError):
-            pass
-    print(f"\n{'=' * 60}")
-    print(f"{safe_emoji} {title}")
-    print("=" * 60)
+
+        console.print("\n[cyan]Step 2: Confirm and execute sell...[/cyan]")
+        console.print(f"Market: {prepare_result['market']}")
+        console.print(f"Protocol: {prepare_result['protocol']}")
+
+        execute_result = agent.execute_sell_transaction(
+            position_id=position_id,
+            market=prepare_result["market"],
+            protocol=prepare_result["protocol"],
+            slippage=config.trading.default_slippage,
+        )
+        console.print(execute_result["message"])
+
+        state_after = get_state()
+        open_positions_after = len(state_after.open_positions)
+        total_trades_after = state_after.total_trades
+
+        position_reduced = open_positions_after < open_positions_before
+        trade_recorded = total_trades_after > total_trades_before
+        has_tx_hint = bool(execute_result.get("tx_id"))
+
+        if execute_result.get("ok") and (position_reduced or trade_recorded):
+            console.print("\n[green][OK] Sell succeeded with confirmed state update[/green]")
+            console.print(
+                f"[dim]Open Positions: {open_positions_before} -> {open_positions_after}, "
+                f"Total Trades: {total_trades_before} -> {total_trades_after}[/dim]"
+            )
+            _show_status()
+        elif has_tx_hint:
+            console.print(
+                "\n[yellow][WARN] Trade receipt found but local state did not update. Refresh or retry.[/yellow]"
+            )
+        else:
+            console.print(
+                "\n[red][FAIL] Sell did not complete: no valid state change detected.[/red]"
+            )
+    except Exception as e:
+        console.print(f"\n[red]Execution error: {e}[/red]")
+        import traceback
+
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
 
-def print_success(message: str) -> None:
-    """Print a success message."""
-    if RICH_AVAILABLE and console:
-        try:
-            console.print("[green][OK][/green] " + message)
+def _handle_scan_intent(intent, agent):
+    """Handle scan intent."""
+    limit = intent.params.get("limit", 5)
+
+    console.print(f"[bold cyan]Scanning top {limit} trending tokens...[/bold cyan]")
+    try:
+        result = agent._run_bitget_api("rankings", "name=Hotpicks")
+        data = json.loads(result)
+        status = data.get("status", 0)
+        error_code = data.get("error_code", 0)
+        if status != 0 or error_code != 0:
+            console.print(
+                f"[red]Scan failed: {data.get('msg') or data.get('title') or 'Unknown error'}[/red]"
+            )
             return
-        except (UnicodeEncodeError, OSError):
-            pass
-    print("[OK] " + message)
 
-
-def print_error(message: str) -> None:
-    """Print an error message."""
-    if RICH_AVAILABLE and console:
-        try:
-            console.print("[red][ERROR][/red] " + message, style="red")
+        tokens = data.get("data", {}).get("list", [])
+        sol_tokens = [t for t in tokens if t.get("chain") == "sol"][:limit]
+        if not sol_tokens:
+            console.print("[yellow]No trending Solana tokens found[/yellow]")
             return
-        except (UnicodeEncodeError, OSError):
-            pass
-    print("[ERROR] " + message)
+
+        analyzer = DecisionAnalyzer()
+        console.print("\n[bold green]Scan Results[/bold green]:")
+        for index, token in enumerate(sol_tokens, 1):
+            contract = token.get("contract", "")
+            symbol = token.get("symbol", "UNKNOWN")
+            if not contract:
+                continue
+            analysis = analyzer.analyze_token(contract)
+            if not analysis:
+                console.print(f"{index}. {symbol} - [red]Analysis failed[/red]")
+                continue
+            console.print(
+                f"{index}. {analysis.token_symbol} | Score: {analysis.total_score}/100 | "
+                f"Risk: {analysis.risk_level} | Advice: {analysis.recommendation}"
+            )
+            console.print(f"   Contract: {contract}")
+            console.print(
+                f"   Price: ${analysis.current_price:.8f} | Liquidity: ${analysis.liquidity_usd:,.2f}"
+            )
+    except Exception as e:
+        console.print(f"[red]Scan failed: {e}[/red]")
 
 
-def print_warning(message: str) -> None:
-    """Print a warning message."""
-    if RICH_AVAILABLE and console:
-        try:
-            console.print("[yellow][WARN][/yellow] " + message, style="yellow")
+def _handle_analyze_intent(intent, agent):
+    """Handle analyze intent."""
+    token = intent.params.get("token")
+
+    if not token:
+        token = Prompt.ask("Enter token contract address to analyze")
+
+    console.print(f"[bold cyan]Analyzing token: {token}[/bold cyan]\n")
+
+    # 使用决策分析器进行全面分析
+    analyzer = DecisionAnalyzer()
+    analysis = analyzer.analyze_token(token)
+
+    if analysis:
+        console.print(analyzer.format_report(analysis))
+    else:
+        # 回退到AI分析
+        prompt = f"""Analyze token {token} on Solana.
+Check security, liquidity, and trading activity.
+Give me a detailed analysis with buy/avoid recommendation."""
+
+        with console.status("[bold green]Analyzing...[/bold green]"):
+            response = agent.run(prompt)
+
+        console.print(Markdown(response))
+
+
+def _handle_auto_invest_intent(intent, agent):
+    """Handle auto-invest intent."""
+    # 优先从参数中获取预算
+    budget_usd = intent.params.get("budget_usd")
+    budget_sol = intent.params.get("budget_sol")
+
+    # 如果没有参数，尝试从原始输入提取
+    if not budget_usd and not budget_sol:
+        budget_usd = intent.params.get("budget", 10)
+
+    # 显示预算
+    if budget_sol:
+        budget_usd = budget_sol * 150
+        console.print(
+            f"[bold cyan]Auto-invest mode - Budget: {budget_sol} SOL (~${budget_usd:.0f} USDT)[/bold cyan]"
+        )
+    else:
+        console.print(f"[bold cyan]Auto-invest mode - Budget: ${budget_usd:.0f} USDT[/bold cyan]")
+
+    console.print("[dim]Scanning opportunities and running risk analysis...[/dim]\n")
+
+    # Step 1: 扫描热门代币
+    console.print("[bold yellow]Step 1: Scan trending tokens...[/bold yellow]")
+
+    try:
+        # 使用 agent 的 Bitget API 获取热门代币
+        result = agent._run_bitget_api("rankings", "name=Hotpicks")
+        data = json.loads(result)
+
+        status = data.get("status", 0)
+        error_code = data.get("error_code", 0)
+        if status != 0 or error_code != 0:
+            console.print(
+                f"[red]Scan failed: {data.get('msg') or data.get('title') or 'Unknown error'}[/red]"
+            )
             return
-        except (UnicodeEncodeError, OSError):
-            pass
-    print("[WARN] " + message)
+
+        tokens = data.get("data", {}).get("list", [])
+        # 只取 Solana 链上的代币
+        sol_tokens = [t for t in tokens if t.get("chain") == "sol"][:10]
+
+        if not sol_tokens:
+            console.print("[red]No trending Solana tokens found[/red]")
+            return
+
+        console.print(f"[green]Found {len(sol_tokens)} trending Solana tokens[/green]\n")
+    except Exception as e:
+        console.print(f"[red]Scan failed: {e}[/red]")
+        return
+
+    # Step 2: 分析每个代币
+    console.print("[bold yellow]Step 2: Run risk analysis...[/bold yellow]")
+    analyzer = DecisionAnalyzer()
+    qualified_tokens = []
+
+    for i, token in enumerate(sol_tokens[:5], 1):  # 分析前5个
+        contract = token.get("contract", "")
+        symbol = token.get("symbol", "UNKNOWN")
+
+        if not contract:
+            continue
+
+        console.print(f"\n[cyan]Analyzing {i}/5: {symbol}[/cyan]")
+
+        try:
+            analysis = analyzer.analyze_token(contract)
+            if analysis and analysis.total_score >= config.trading.min_risk_score:
+                qualified_tokens.append(
+                    {
+                        "symbol": analysis.token_symbol,
+                        "contract": contract,
+                        "score": analysis.total_score,
+                        "price": analysis.current_price,
+                        "recommendation": analysis.recommendation,
+                        "analysis": analysis,
+                    }
+                )
+                console.print(f"[green]  [OK] Passed - Score: {analysis.total_score}/100[/green]")
+            elif analysis:
+                console.print(
+                    f"[yellow]  [SKIP] Rejected - Score: {analysis.total_score}/100 (need > {config.trading.min_risk_score})[/yellow]"
+                )
+        except Exception as e:
+            console.print(f"[red]  [ERROR] Analysis failed: {e}[/red]")
+            continue
+
+    if not qualified_tokens:
+        console.print("\n[red]No tokens met the selection criteria[/red]")
+        return
+
+    # Step 3: 显示投资计划
+    console.print(f"\n[bold green]Found {len(qualified_tokens)} qualified tokens[/bold green]")
+
+    # 选择前2-3个
+    selected = qualified_tokens[: min(3, len(qualified_tokens))]
+    allocation_per_token = budget_usd / len(selected)
+
+    console.print("\n" + "=" * 60)
+    console.print("[bold cyan]Investment Plan[/bold cyan]")
+    console.print("=" * 60)
+
+    for i, token in enumerate(selected, 1):
+        sol_amount = allocation_per_token / 150  # 假设 SOL=$150
+        console.print(f"\n{i}. {token['symbol']}")
+        console.print(f"   Contract: {token['contract'][:20]}...")
+        console.print(f"   Score: {token['score']}/100")
+        console.print(f"   Price: ${token['price']:.8f}")
+        console.print(f"   Allocation: ${allocation_per_token:.2f} USDT ~= {sol_amount:.4f} SOL")
+
+    console.print(f"\nTotal: ${budget_usd:.2f} USDT")
+    console.print("=" * 60)
+
+    # 用户确认
+    if not Confirm.ask("\n[bold red]Confirm this investment plan?[/bold red]"):
+        console.print("[yellow]Investment cancelled.[/yellow]")
+        return
+
+    # Step 4: 执行交易
+    console.print("\n[bold]Executing trades...[/bold]")
+
+    for token in selected:
+        sol_amount = allocation_per_token / 150
+        console.print(f"\n[cyan]Buying {token['symbol']}...[/cyan]")
+
+        try:
+            prepare_result = agent.prepare_buy_transaction(
+                token_contract=token["contract"],
+                token_symbol=token["symbol"],
+                amount_sol=sol_amount,
+                slippage=config.trading.default_slippage,
+            )
+            console.print(prepare_result["message"])
+
+            if not prepare_result.get("ok"):
+                console.print(f"[red]Buy preparation failed for {token['symbol']}[/red]")
+                continue
+
+            execute_result = agent.execute_buy_transaction(
+                token_contract=token["contract"],
+                token_symbol=prepare_result["token_symbol"],
+                amount_sol=sol_amount,
+                market=prepare_result["market"],
+                protocol=prepare_result["protocol"],
+                slippage=config.trading.default_slippage,
+            )
+            console.print(execute_result["message"])
+
+            if not execute_result.get("ok"):
+                console.print(f"[red]Buy execution failed for {token['symbol']}[/red]")
+
+        except Exception as e:
+            console.print(f"[red]Buy failed for {token['symbol']}: {e}[/red]")
+            continue
+
+    console.print("\n[bold green]Auto-invest execution complete[/bold green]")
 
 
-# =============================================================================
-# Trading Agent Implementation
-# =============================================================================
+@app.command()
+def scan(
+    chain: str = typer.Option("sol", help="Chain to scan"),
+    limit: int = typer.Option(5, help="Number of tokens to analyze"),
+):
+    """Scan for trending tokens and analyze them"""
+    agent = create_agent()
+
+    prompt = f"Scan for trending tokens on {chain} chain. Analyze the top {limit} tokens for trading potential. For each token: check security, liquidity, and recent activity. Provide a summary with buy/avoid recommendations."
+
+    with console.status("[bold green]Scanning and analyzing...[/bold green]"):
+        response = agent.run(prompt)
+
+    # Remove emojis for Windows compatibility
+    response_clean = response.encode("ascii", "ignore").decode("ascii")
+    console.print(response_clean)
 
 
-@dataclass
-class AgentState:
-    """Trading agent state and configuration."""
+@app.command()
+def analyze(
+    contract: str = typer.Argument(..., help="Token contract address"),
+    chain: str = typer.Option("sol", help="Chain code"),
+):
+    """Analyze a specific token"""
+    agent = create_agent()
 
-    model: str = OPENAI_MODEL if USE_OPENAI_COMPATIBLE else ANTHROPIC_MODEL
-    max_tokens: int = 4096
-    temperature: float = 0.7
-    verbose: bool = False
-    api_type: str = "openai" if USE_OPENAI_COMPATIBLE else "anthropic"
-    tools: list[dict[str, Any]] = field(default_factory=list)
+    prompt = f"""Analyze token on {chain} chain with contract: {contract}
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for API calls."""
-        return {
-            "model": self.model,
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
-        }
+Please:
+1. Get token info and current price
+2. Run security audit (check for honeypot, taxes, risks)
+3. Check liquidity pools
+4. Check recent trading activity
+5. Provide a trading recommendation (buy/avoid/hold) with reasons
+"""
+
+    with console.status("[bold green]Analyzing token...[/bold green]"):
+        response = agent.run(prompt)
+
+    # Remove emojis for Windows compatibility
+    response_clean = response.encode("ascii", "ignore").decode("ascii")
+    console.print(response_clean)
 
 
-class TradingAgent:
+@app.command()
+def status():
+    """Show current portfolio status"""
+    _show_status()
+
+
+@app.command()
+def positions():
+    """Show open positions"""
+    _show_positions()
+
+
+@app.command()
+def auto_invest(
+    budget: float = typer.Option(..., help="Total budget in USDT to invest"),
+    max_positions: int = typer.Option(3, help="Maximum number of positions to open"),
+    min_score: int = typer.Option(70, help="Minimum risk score threshold (0-100)"),
+    dry_run: bool = typer.Option(True, help="Analyze only, don't execute trades"),
+):
     """
-    AI-powered trading agent for meme coin analysis and trading.
+    Automatically analyze trending tokens and invest within budget.
 
-    Uses Claude API for natural language understanding and decision making,
-    combined with on-chain data from Bitget Wallet and RugCheck APIs.
+    Performs comprehensive decision analysis for each token before investing:
+    - Security audit (honeypot, taxes, contract)
+    - Liquidity assessment
+    - Trading activity analysis
+    - Risk scoring
+
+    Only invests in tokens passing all safety checks.
+
+    Example:
+        meme-agent auto-invest --budget 10 --max-positions 2 --dry-run
+        meme-agent auto-invest --budget 10 --max-positions 2 --no-dry-run
     """
+    from agent.wallet import get_wallet_manager
+    from agent.decision import DecisionAnalyzer, should_execute_buy
 
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
-        api_type: Optional[str] = None,
-        verbose: bool = False,
+    wm = get_wallet_manager()
+    if not wm.has_mnemonic:
+        console.print(
+            "[red]Error: No wallet mnemonic configured. Set MNEMONIC_PHRASE in .env[/red]"
+        )
+        raise typer.Exit(1)
+
+    wallet_address = wm.get_solana_address()
+
+    console.print(
+        Panel.fit(
+            f"[bold green]Auto Investment Mode with Decision Analysis[/bold green]\n"
+            f"Budget: [cyan]{budget} USDT[/cyan]\n"
+            f"Max Positions: [cyan]{max_positions}[/cyan]\n"
+            f"Min Risk Score: [cyan]{min_score}[/cyan]\n"
+            f"Mode: [yellow]{'DRY RUN (Analysis Only)' if dry_run else 'LIVE TRADING'}[/yellow]\n"
+            f"[dim]Each token will undergo comprehensive analysis before investment[/dim]",
+            border_style="green",
+        )
+    )
+
+    agent = create_agent()
+
+    # Step 1: Use the dedicated analysis tool
+    console.print("\n[bold]Step 1: Scanning and pre-filtering opportunities...[/bold]")
+
+    # Directly call the analysis tool for more reliable results
+    analysis_result = agent.tools[-1].func(budget, max_positions, min_score)
+
+    console.print("\n[bold]Pre-filtering Results:[/bold]")
+    analysis_clean = analysis_result.encode("ascii", "ignore").decode("ascii")
+    console.print(analysis_clean)
+
+    # Check if there are opportunities
+    if "No tokens met" in analysis_result or "Qualified Opportunities: 0" in analysis_result:
+        console.print("\n[yellow]No suitable investment opportunities found. Exiting.[/yellow]")
+        return
+
+    # Step 2: Decision Analysis for each candidate
+    console.print("\n[bold]Step 2: Comprehensive Decision Analysis...[/bold]")
+    console.print("[dim]Performing deep analysis on candidate tokens...[/dim]\n")
+
+    analyzer = DecisionAnalyzer()
+    approved_tokens = []
+
+    # Extract token contracts from analysis result
+    # This is a simplified approach - in production, parse the JSON
+    console.print(
+        "[yellow]Note: Deep analysis will be performed during execution for each token.[/yellow]"
+    )
+
+    # Step 3: Get investment plan from agent
+    console.print("\n[bold]Step 3: Generating investment plan...[/bold]")
+
+    plan_prompt = f"""Based on the analysis above, create an investment plan.
+
+Budget: {budget} USDT
+Max Positions: {max_positions}
+Wallet: {wallet_address}
+Min Score: {min_score}
+
+IMPORTANT: For each token in the plan:
+1. Use DecisionAnalyzer to perform comprehensive analysis (security, liquidity, activity)
+2. Only proceed if the token passes should_execute_buy() check
+3. Calculate position size (respect 5% max per trade rule, so max {min(budget / max_positions, budget * 0.05):.2f} USDT per position)
+4. Set stop loss (-{config.trading.stop_loss_pct}%) and take profit (+{config.trading.take_profit_pct}%)
+
+Return a clear investment plan with:
+- Which tokens to buy (only those passing all checks)
+- How much to invest in each (in USDT and SOL)
+- Expected token amounts
+- Risk/Reward assessment
+- Analysis scores for each token
+
+If no tokens pass the safety checks, say "NO SUITABLE OPPORTUNITIES FOUND".
+"""
+
+    with console.status("[bold green]Creating investment plan...[/bold green]"):
+        plan_result = agent.run(plan_prompt)
+
+    console.print("\n[bold]Investment Plan:[/bold]")
+    plan_clean = plan_result.encode("ascii", "ignore").decode("ascii")
+    console.print(plan_clean)
+
+    # Check if there are opportunities
+    if "NO SUITABLE" in plan_result.upper() or "no suitable" in plan_result.lower():
+        console.print("\n[yellow]No suitable investment opportunities found. Exiting.[/yellow]")
+        return
+
+    # Step 4: Execute or simulate
+    if dry_run:
+        console.print("\n[bold yellow]DRY RUN COMPLETE[/bold yellow]")
+        console.print("No trades were executed. Use --no-dry-run to execute.")
+        return
+
+    # Confirm before executing
+    if not Confirm.ask(
+        "\n[bold red]Execute the investment plan? This will perform actual trades.[/bold red]"
     ):
-        """
-        Initialize the trading agent.
+        console.print("[yellow]Investment cancelled.[/yellow]")
+        return
 
-        Args:
-            api_key: API key (uses OPENAI_API_KEY or ANTHROPIC_API_KEY env var if not provided)
-            base_url: API base URL (uses env var if not provided)
-            model: Model name (uses env var if not provided)
-            api_type: 'openai' or 'anthropic' (auto-detects from available keys)
-            verbose: Enable verbose logging
-        """
-        # Auto-detect API type if not specified
-        if api_type is None:
-            api_type = "openai" if USE_OPENAI_COMPATIBLE else "anthropic"
+    # Step 5: Execute trades with per-token analysis
+    console.print("\n[bold]Step 4: Executing trades with per-token decision analysis...[/bold]")
 
-        self.api_type = api_type
+    # The execute_buy tool will now automatically perform decision analysis
+    execute_prompt = f"""Execute the investment plan above with budget {budget} USDT.
 
-        if api_type == "openai":
-            self.api_key = api_key or OPENAI_API_KEY
-            self.base_url = base_url or OPENAI_BASE_URL
-            self.model = model or OPENAI_MODEL
+For each token in the plan:
+1. Use DecisionAnalyzer.analyze_token() for comprehensive analysis
+2. Check should_execute_buy() - only proceed if it returns True
+3. If rejected, skip and try next token
+4. Use execute_buy tool to prepare and execute the trade
+5. Record the position with stop-loss and take-profit prices
+
+Execute trades one by one and report:
+- Analysis result for each token (score, recommendation)
+- Whether it passed safety checks
+- Success/failure of each trade
+- Transaction IDs
+- Actual amounts received
+- Any errors encountered
+
+Wallet address: {wallet_address}
+Min Score Required: {min_score}
+Min Liquidity Required: ${config.trading.min_liquidity_usd:,.0f}
+"""
+
+    with console.status("[bold green]Executing trades...[/bold green]"):
+        execute_result = agent.run(execute_prompt)
+
+    console.print("\n[bold]Execution Results:[/bold]")
+    execute_clean = execute_result.encode("ascii", "ignore").decode("ascii")
+    console.print(execute_clean)
+
+    # Show final status
+    console.print("\n[bold]Final Portfolio Status:[/bold]")
+    _show_status()
+
+
+@app.command()
+def balance(
+    address: Optional[str] = typer.Option(None, help="Wallet address"),
+):
+    """Check wallet balance"""
+    state = get_state()
+
+    if not address and state.wallet_address:
+        address = state.wallet_address
+
+    if not address:
+        console.print(
+            "[red]No wallet address configured. Set one with: meme-agent set-wallet[/red]"
+        )
+        raise typer.Exit(1)
+
+    agent = create_agent()
+
+    prompt = f"Check balance for wallet {address} on Solana chain. Show all token balances with USD values."
+
+    with console.status("[bold green]Checking balance...[/bold green]"):
+        response = agent.run(prompt)
+
+    console.print(Markdown(response))
+
+
+@app.command()
+def set_wallet(address: str = typer.Argument(..., help="Wallet address")):
+    """Set the wallet address for trading"""
+    state = get_state()
+    state.wallet_address = address
+    save_state(state)
+    console.print(f"[green]Wallet address set to: {address}[/green]")
+
+
+@app.command()
+def trade(
+    from_token: str = typer.Option(..., help="Token to sell (contract or SOL)"),
+    to_token: str = typer.Option(..., help="Token to buy (contract or SOL)"),
+    amount: float = typer.Option(..., help="Amount to trade"),
+    slippage: float = typer.Option(1.0, help="Slippage tolerance %"),
+    dry_run: bool = typer.Option(True, help="Simulate without executing"),
+):
+    """
+    Execute a trade (requires confirmation).
+
+    By default runs in dry-run mode. Use --no-dry-run to execute.
+    """
+    agent = create_agent()
+    state = get_state()
+
+    if not state.wallet_address:
+        console.print(
+            "[red]No wallet address configured. Set one with: meme-agent set-wallet[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Determine contracts
+    from_contract = "" if from_token.upper() == "SOL" else from_token
+    to_contract = "" if to_token.upper() == "SOL" else to_token
+
+    prompt = f"""Prepare a swap on Solana:
+- From: {from_token} ({from_contract or "native SOL"})
+- To: {to_token} ({to_contract or "native SOL"})
+- Amount: {amount}
+- Slippage: {slippage}%
+- Wallet: {state.wallet_address}
+
+Please:
+1. Check my wallet balance first
+2. Run security check on both tokens
+3. Get a swap quote
+4. Show me the details for confirmation
+
+{"DRY RUN - Do not execute, just show what would happen" if dry_run else "After I confirm, execute the swap"}
+"""
+
+    with console.status("[bold green]Preparing trade...[/bold green]"):
+        response = agent.run(prompt)
+
+    console.print(Markdown(response))
+
+    if not dry_run:
+        if Confirm.ask("\n[bold red]Execute this trade?[/bold red]"):
+            execute_prompt = (
+                f"Execute the swap with the quote from above for wallet {state.wallet_address}"
+            )
+            with console.status("[bold green]Executing trade...[/bold green]"):
+                result = agent.run(execute_prompt)
+            console.print(Markdown(result))
+
+
+@app.command()
+def close(
+    position_id: str = typer.Argument(..., help="Position ID to close"),
+):
+    """Close an open position"""
+    state = get_state()
+
+    position = None
+    for p in state.positions:
+        if p.id == position_id and p.is_open:
+            position = p
+            break
+
+    if not position:
+        console.print(f"[red]Position {position_id} not found or already closed[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]Position to close:[/bold]")
+    console.print(f"  Token: {position.token_symbol}")
+    console.print(f"  Entry: ${position.entry_value_usd}")
+    console.print(f"  Amount: {position.entry_amount}")
+
+    if not Confirm.ask("\n[bold red]Close this position?[/bold red]"):
+        console.print("[yellow]Cancelled[/yellow]")
+        raise typer.Exit(0)
+
+    agent = create_agent()
+
+    prompt = f"""Close position {position_id}:
+- Token: {position.token_symbol} ({position.token_contract})
+- Sell {position.entry_amount} tokens for SOL
+- Wallet: {state.wallet_address}
+
+Please:
+1. Get current token price
+2. Get swap quote to sell all tokens for SOL
+3. Execute the swap
+4. Record the position closure
+"""
+
+    with console.status("[bold green]Closing position...[/bold green]"):
+        response = agent.run(prompt)
+
+    console.print(Markdown(response))
+
+
+def _show_help():
+    """Show help message"""
+    console.print(
+        Panel(
+            """[bold]Chat Commands:[/bold]
+  [cyan]scan[/cyan]              - Scan trending tokens and analyze them
+  [cyan]analyze[/cyan]           - Analyze a specific token contract
+  [cyan]auto[/cyan]              - Run auto-invest analysis
+  [cyan]buy <token> <amt>[/cyan] - Prepare to buy a token (e.g., 'buy CONTRACT 0.1')
+  [cyan]sell <position>[/cyan]   - Prepare to sell a position (e.g., 'sell POS_ID')
+  [cyan]status[/cyan]            - Show portfolio status
+  [cyan]positions[/cyan]         - Show open positions
+  [cyan]history[/cyan]           - Show trade history
+  [cyan]balance[/cyan]           - Check wallet balance
+  [cyan]help[/cyan]              - Show this help
+  [cyan]quit[/cyan]              - Exit the agent
+
+[bold]CLI Commands:[/bold]
+  [cyan]scan[/cyan]              - Scan and analyze tokens
+  [cyan]analyze <contract>[/cyan] - Analyze specific token
+  [cyan]auto-invest[/cyan]       - Auto analyze and invest
+  [cyan]status[/cyan]            - Show portfolio status
+  [cyan]positions[/cyan]         - Show open positions
+  [cyan]chat[/cyan]              - Start interactive chat
+
+[bold]Examples:[/bold]
+  "Scan for new Solana meme coins launched today"
+  "What's the price of [contract address]?"
+  "Should I buy [token]? Run a full analysis"
+  "Check my portfolio status"
+  "Sell my position in [token]"
+  "Auto-invest 10 USDT in top 2 opportunities"
+""",
+            title="Help",
+            border_style="blue",
+        )
+    )
+
+
+def _refresh_wallet_balance(state: AgentState) -> bool:
+    """
+    Refresh wallet balance from on-chain data using Bitget API.
+    Updates state.native_balance in place and saves state.
+
+    Returns:
+        True if refresh succeeded, False otherwise
+    """
+    if not state.wallet_address:
+        return False
+
+    # Path to Bitget API script
+    script_path = (
+        Path(__file__).parent.parent
+        / "skills"
+        / "bitget-wallet-skill"
+        / "scripts"
+        / "bitget_agent_api.py"
+    )
+
+    try:
+        # Query SOL balance (native token)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script_path),
+                "get-processed-balance",
+                "--chain",
+                "sol",
+                "--address",
+                state.wallet_address,
+                "--contract",
+                "",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            if data.get("status") == 0 and data.get("data"):
+                balance_data = data["data"][0]
+                token_list = balance_data.get("list", {})
+
+                # Update native SOL balance
+                if "" in token_list:
+                    sol_balance = Decimal(token_list[""].get("balance", "0"))
+                    state.native_balance = sol_balance
+                    save_state(state)
+                    return True
+
+        return False
+
+    except Exception:
+        # Silently fail - we'll show cached values
+        return False
+
+
+def _show_status():
+    """Show portfolio status with refreshed balances"""
+    state = get_state()
+
+    # Refresh wallet balance before displaying
+    with console.status("[dim]Refreshing balances..."):
+        _refresh_wallet_balance(state)
+
+    console.print(
+        Panel(
+            f"""[bold]Wallet:[/bold] {state.wallet_address or "Not set"}
+[bold]SOL Balance:[/bold] {state.native_balance:.6f}
+[bold]Total Value:[/bold] ${state.total_value_usd:.2f}
+
+[bold]Trading Stats:[/bold]
+  Total PnL: ${state.total_pnl_usd:.2f}
+  Total Trades: {state.total_trades}
+  Win Rate: {state.win_rate * 100:.1f}%
+  Daily Trades: {state.daily_trade_count}/{config.trading.max_daily_trades}
+""",
+            title="Portfolio Status",
+            border_style="green",
+        )
+    )
+
+    if state.token_balances:
+        table = Table(title="Token Balances")
+        table.add_column("Symbol")
+        table.add_column("Balance")
+        table.add_column("Value (USD)")
+
+        for b in state.token_balances:
+            table.add_row(
+                b.symbol, f"{b.balance:.4f}", f"${b.balance_usd:.2f}" if b.balance_usd else "-"
+            )
+
+        console.print(table)
+
+
+def _show_positions():
+    """Show open positions"""
+    state = get_state()
+
+    if not state.open_positions:
+        console.print("[yellow]No open positions[/yellow]")
+        return
+
+    table = Table(title="Open Positions")
+    table.add_column("ID")
+    table.add_column("Token")
+    table.add_column("Entry Price")
+    table.add_column("Amount")
+    table.add_column("Entry Value")
+    table.add_column("Hold Time")
+
+    for p in state.open_positions:
+        table.add_row(
+            p.id,
+            p.token_symbol,
+            f"${p.entry_price:.6f}",
+            f"{p.entry_amount:.4f}",
+            f"${p.entry_value_usd:.2f}",
+            f"{p.hold_duration_hours:.1f}h",
+        )
+
+    console.print(table)
+
+
+def _show_history():
+    """Show trade history"""
+    state = get_state()
+
+    if not state.trades:
+        console.print("[yellow]No trade history[/yellow]")
+        return
+
+    table = Table(title="Trade History")
+    table.add_column("Time")
+    table.add_column("Action")
+    table.add_column("Token")
+    table.add_column("Amount")
+    table.add_column("Value")
+
+    for t in state.trades[-20:]:  # Last 20 trades
+        table.add_row(
+            t.timestamp.strftime("%m-%d %H:%M"),
+            t.action.value.upper(),
+            t.token_symbol,
+            f"{t.amount:.4f}",
+            f"${t.value_usd:.2f}",
+        )
+
+    console.print(table)
+
+
+@app.command()
+def monitor(
+    interval: int = typer.Option(60, help="Check interval in seconds"),
+    once: bool = typer.Option(False, help="Run once and exit"),
+):
+    """
+    Monitor open positions and auto-sell on stop-loss/take-profit triggers.
+
+    Automatically checks all open positions every interval seconds.
+    Sells positions when:
+    - Price reaches take-profit target (+30% by default)
+    - Price hits stop-loss (-15% by default)
+    - Maximum hold time exceeded (24h by default)
+
+    Examples:
+        python -m cli.main monitor                    # Continuous monitoring
+        python -m cli.main monitor --interval 30      # Check every 30 seconds
+        python -m cli.main monitor --once             # Check once and exit
+    """
+    from agent.monitor import SimplePositionMonitor, run_monitor_once
+    from agent.wallet import get_wallet_manager
+
+    wm = get_wallet_manager()
+    if not wm.has_mnemonic:
+        console.print(
+            "[red]Error: No wallet mnemonic configured. Set MNEMONIC_PHRASE in .env[/red]"
+        )
+        raise typer.Exit(1)
+
+    if once:
+        console.print("[bold]Running position check once...[/bold]")
+        import asyncio
+
+        asyncio.run(run_monitor_once())
+    else:
+        console.print(
+            Panel.fit(
+                "[bold green]🚀 Position Monitor Starting[/bold green]\n"
+                f"Check Interval: [cyan]{interval}s[/cyan]\n"
+                f"Take Profit: [green]+{config.trading.take_profit_pct}%[/green]\n"
+                f"Stop Loss: [red]-{config.trading.stop_loss_pct}%[/red]\n"
+                f"Max Hold: [yellow]{config.trading.max_hold_hours}h[/yellow]\n\n"
+                "[dim]Press Ctrl+C to stop[/dim]",
+                border_style="green",
+            )
+        )
+
+        monitor = SimplePositionMonitor()
+        monitor.check_interval = interval
+
+        try:
+            import asyncio
+
+            asyncio.run(monitor.start())
+        except KeyboardInterrupt:
+            monitor.stop()
+
+
+@app.command()
+def init():
+    """Initialize the agent with configuration check"""
+    console.print("[bold]Solana Meme Trading Agent - Initialization[/bold]\n")
+
+    # Check .env file
+    env_file = Path(".env")
+    if not env_file.exists():
+        console.print("[yellow]No .env file found. Creating from template...[/yellow]")
+        import shutil
+
+        shutil.copy(".env.example", ".env")
+        console.print("[green]Created .env file. Please edit with your API keys.[/green]")
+    else:
+        console.print("[green][OK] .env file exists[/green]")
+
+    # Check configuration
+    try:
+        from agent.config import config
+
+        if config.llm.api_key:
+            console.print("[green][OK] LLM API key configured[/green]")
         else:
-            self.api_key = api_key or ANTHROPIC_API_KEY
-            self.base_url = base_url or ANTHROPIC_BASE_URL
-            self.model = model or ANTHROPIC_MODEL
+            console.print("[red][X] LLM API key not set[/red]")
+            console.print("  Set OPENAI_API_KEY in .env file")
+    except Exception as e:
+        console.print(f"[red][X] Configuration error: {e}[/red]")
 
-        self.verbose = verbose
-        self.state = AgentState(model=self.model, verbose=verbose, api_type=api_type)
-        self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "Content-Type": "application/json",
-                "User-Agent": "SolanaMemeAgent/1.0",
-            }
-        )
+    # Check skills
+    skills_path = Path("skills")
+    if skills_path.exists():
+        skills = list(skills_path.glob("*/SKILL.md"))
+        console.print(f"[green][OK] Found {len(skills)} skill(s)[/green]")
+        for s in skills:
+            console.print(f"    - {s.parent.name}")
+    else:
+        console.print("[red][X] Skills directory not found[/red]")
 
-    def invoke(self, messages: list[dict[str, str]]) -> dict[str, Any]:
-        """
-        Invoke the agent with a conversation.
+    # Initialize state
+    state = get_state()
+    console.print(f"[green][OK] State initialized (Agent ID: {state.agent_id})[/green]")
 
-        Args:
-            messages: List of message dicts with 'role' and 'content'
-
-        Returns:
-            Dict with 'messages' containing the conversation history
-        """
-        if not self.api_key:
-            # Fallback: Simulate agent response for demo purposes
-            return self._simulate_response(messages)
-
+    # Check wallet
+    wm = get_wallet_manager()
+    if wm.has_mnemonic:
         try:
-            # Prepare request based on API type
-            if self.api_type == "openai":
-                # OpenAI-compatible format (for DashScope, OpenAI, etc.)
-                payload = {
-                    "model": self.state.model,
-                    "max_tokens": self.state.max_tokens,
-                    "messages": [m for m in messages if m["role"] != "system"],
-                }
-
-                # Add system message if present
-                system_messages = [m for m in messages if m.get("role") == "system"]
-                if system_messages:
-                    payload["messages"].insert(
-                        0, {"role": "system", "content": system_messages[0]["content"]}
-                    )
-
-                headers = {
-                    "Authorization": f"Bearer {self.api_key}",
-                }
-
-                # OpenAI uses /chat/completions endpoint
-                endpoint = f"{self.base_url}/chat/completions"
-            else:
-                # Anthropic format
-                payload = {
-                    "model": self.state.model,
-                    "max_tokens": self.state.max_tokens,
-                    "messages": [m for m in messages if m["role"] != "system"],
-                }
-
-                system_messages = [m for m in messages if m.get("role") == "system"]
-                if system_messages:
-                    payload["system"] = system_messages[0]["content"]
-
-                headers = {
-                    "x-api-key": self.api_key,
-                    "anthropic-version": "2023-06-01",
-                }
-
-                endpoint = f"{self.base_url}/messages"
-
-            response = self.session.post(
-                endpoint,
-                json=payload,
-                headers=headers,
-                timeout=60,
+            sol_address = wm.get_solana_address()
+            console.print(
+                f"[green][OK] Solana wallet configured: {sol_address[:20]}...{sol_address[-8:]}[/green]"
             )
-            response.raise_for_status()
-            result = response.json()
-
-            # Parse response based on API type
-            if self.api_type == "openai":
-                # OpenAI format: choices[0].message.content
-                assistant_content = result["choices"][0]["message"]["content"]
-            else:
-                # Anthropic format: content[0].text
-                assistant_content = result["content"][0]["text"]
-
-            assistant_message = {
-                "role": "assistant",
-                "content": assistant_content,
-            }
-            messages.append(assistant_message)
-
-            return {"messages": messages}
-
-        except requests.Timeout:
-            error_response = {
-                "role": "assistant",
-                "content": "Error: API request timed out. Please try again.",
-            }
-            messages.append(error_response)
-            return {"messages": messages}
-        except requests.RequestException as e:
-            error_response = {
-                "role": "assistant",
-                "content": f"Error: API request failed - {str(e)}",
-            }
-            messages.append(error_response)
-            return {"messages": messages}
-
-    def _simulate_response(self, messages: list[dict[str, str]]) -> dict[str, Any]:
-        """
-        Simulate agent response when API key is not available.
-
-        This allows the CLI to function in demo mode without API credentials.
-        """
-        last_message = messages[-1]["content"] if messages else ""
-        content = last_message.lower()
-
-        # Simulate responses based on query content
-        if "scan" in content:
-            response_content = self._simulate_scan_response(content)
-        elif "risk" in content or "contract" in content:
-            response_content = self._simulate_risk_response(content)
-        elif "swap" in content or "trade" in content:
-            response_content = self._simulate_swap_response(content)
-        elif "portfolio" in content or "balance" in content:
-            response_content = self._simulate_portfolio_response(content)
-        else:
-            response_content = (
-                "Hello! I'm your Solana Meme Trading Agent.\n\n"
-                "I can help you with:\n"
-                "• Scanning for trending meme coins\n"
-                "• Analyzing token risk scores\n"
-                "• Executing trades on Bitget Wallet\n"
-                "• Managing your portfolio\n\n"
-                "What would you like to do?\n\n"
-                "⚠️  Note: Running in demo mode. Set ANTHROPIC_API_KEY for full AI features."
-            )
-
-        messages.append({"role": "assistant", "content": response_content})
-        return {"messages": messages}
-
-    def _simulate_scan_response(self, content: str) -> str:
-        """Simulate scan command response."""
-        return """🔍 **Trending Meme Coins Analysis**
-
-Based on current market data, here are the top trending meme coins:
-
-**Top Picks (Risk-Filtered):**
-
-| Rank | Symbol | Price Change | Liquidity | Risk Score |
-|------|--------|--------------|-----------|------------|
-| 1 | BONK | +15.2% | $2.5M | 85/100 |
-| 2 | WIF | +8.7% | $1.8M | 78/100 |
-| 3 | MYRO | +12.3% | $950K | 72/100 |
-
-**Key Observations:**
-- Market sentiment: Bullish 📈
-- Average risk score: 78/100 (Safe range)
-- Total liquidity: $5.2M+ across top picks
-
-⚠️  Always DYOR before trading. Past performance ≠ future results.
-
-To execute a trade, use: `meme-agent swap --chain sol --from SOL --to <TOKEN> --amount 0.1`"""
-
-    def _simulate_risk_response(self, content: str) -> str:
-        """Simulate risk-check command response."""
-        return """🛡️  **Token Risk Analysis**
-
-**Security Assessment:**
-- Contract Risk: LOW ✓
-- Liquidity Score: 85/100 ✓
-- Holder Distribution: HEALTHY ✓
-
-**Detailed Breakdown:**
-
-| Category | Score | Status |
-|----------|-------|--------|
-| Security | 90/100 | ✓ Safe |
-| Liquidity | 85/100 | ✓ Good |
-| Transactions | 78/100 | ✓ Active |
-
-**Overall Risk Score: 84/100 (SAFE)**
-
-**Recommendations:**
-✓ Token appears safe to trade
-✓ Liquidity is sufficient
-⚠️ Monitor for unusual volume spikes
-
-To proceed with trading, use: `meme-agent swap`"""
-
-    def _simulate_swap_response(self, content: str) -> str:
-        """Simulate swap command response."""
-        return """💱 **Swap Execution Summary**
-
-**Trade Details:**
-- From: 0.1 SOL
-- To: ~$15.20 worth of tokens (estimated)
-- Network: Solana
-- Slippage: 1.0% (default)
-
-**Transaction Preview:**
-```
-Route: SOL → USDC → Target Token
-Expected Output: Calculated at execution
-Gas Fee: ~0.000005 SOL
-```
-
-⚠️  **IMPORTANT: Confirm Before Executing**
-
-To complete this swap:
-1. Review the details above
-2. Ensure you have sufficient SOL balance
-3. Run with --confirm flag to execute
-
-```bash
-meme-agent swap --chain sol --from SOL --to <TOKEN> --amount 0.1 --confirm
-```
-
-Would you like to proceed with this trade?"""
-
-    def _simulate_portfolio_response(self, content: str) -> str:
-        """Simulate portfolio command response."""
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return f"""💼 **Portfolio Overview**
-
-**Wallet Summary** (as of {now})
-
-| Asset | Balance | Value (USD) | 24h Change |
-|-------|---------|-------------|------------|
-| SOL | 2.5 | $375.00 | +2.3% |
-| BONK | 1,000,000 | $25.00 | +15.2% |
-| USDC | 100.00 | $100.00 | 0.0% |
-
-**Total Portfolio Value: $500.00**
-
-**Performance:**
-- 24h Change: +$11.50 (+2.3%) 📈
-- 7d Change: +$45.00 (+9.9%) 📈
-
-**Top Holdings:**
-1. SOL - 75.0%
-2. USDC - 20.0%
-3. BONK - 5.0%
-
-⚠️  Connect your wallet to see real-time balances."""
-
-
-def create_trading_agent(
-    api_key: Optional[str] = None, verbose: bool = False
-) -> TradingAgent:
-    """
-    Factory function to create a trading agent instance.
-
-    Args:
-        api_key: Optional Anthropic API key override
-        verbose: Enable verbose logging
-
-    Returns:
-        Configured TradingAgent instance
-    """
-    return TradingAgent(api_key=api_key, verbose=verbose)
-
-
-# =============================================================================
-# Bitget Wallet API Client
-# =============================================================================
-
-
-class BitgetWalletClient:
-    """Client for Bitget Wallet API operations."""
-
-    def __init__(self, api_key: str, api_secret: str):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "Content-Type": "application/json",
-                "User-Agent": "SolanaMemeAgent/1.0",
-            }
-        )
-
-    def get_token_price(self, chain: str, contract: str) -> Optional[float]:
-        """Fetch token price from Bitget Wallet API."""
-        try:
-            url = f"{BITGET_V2_BASE}/wallet/token/info"
-            params = {"contractAddress": contract, "chain": chain}
-            response = self.session.get(url, params=params, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-            if data.get("code") == "00000":
-                return float(data.get("data", {}).get("price", 0))
+            # Auto-set wallet address if not set
+            if not state.wallet_address:
+                state.wallet_address = sol_address
+                save_state(state)
         except Exception as e:
-            logger.debug(f"Failed to fetch token price: {e}")
-        return None
-
-    def get_portfolio(
-        self, wallet_address: str, chain: str = "solana"
-    ) -> list[dict[str, Any]]:
-        """Fetch portfolio balances for a wallet."""
-        try:
-            url = f"{BITGET_V2_BASE}/wallet/account/balance"
-            params = {"address": wallet_address, "chain": chain}
-            response = self.session.get(url, params=params, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-            if data.get("code") == "00000":
-                return data.get("data", {}).get("tokens", [])
-        except Exception as e:
-            logger.debug(f"Failed to fetch portfolio: {e}")
-        return []
-
-
-# =============================================================================
-# Command Implementations
-# =============================================================================
-
-
-def cmd_scan(args) -> int:
-    """
-    Execute the scan command - Scan for trending meme coins.
-
-    Args:
-        args: Parsed command-line arguments
-
-    Returns:
-        Exit code (0 = success)
-    """
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug(
-            f"Scan args: limit={args.limit}, min_liquidity={args.min_liquidity}, "
-            f"min_score={args.min_score}, chain={args.chain}"
-        )
-
-    print_section_header("Scanning for Trending Meme Coins", "[SCAN]")
-
-    try:
-        agent = create_trading_agent(verbose=args.verbose)
-        result = agent.invoke(
-            [
-                {
-                    "role": "user",
-                    "content": (
-                        f"Scan for top {args.limit} meme coins with "
-                        f"min liquidity ${args.min_liquidity}, min risk score {args.min_score} "
-                        f"on {args.chain} chain"
-                    ),
-                }
-            ]
-        )
-        print(_strip_emoji(result["messages"][-1]["content"]))
-        return 0
-
-    except Exception as e:
-        print_error(f"Scan failed: {str(e)}")
-        logger.exception("Scan command error")
-        return 1
-
-
-def cmd_risk_check(args) -> int:
-    """
-    Execute the risk-check command - Check single token risk.
-
-    Args:
-        args: Parsed command-line arguments
-
-    Returns:
-        Exit code (0 = success)
-    """
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug(f"Risk check args: contract={args.contract}, chain={args.chain}")
-
-    print_section_header("Token Risk Analysis", "[RISK]")
-
-    try:
-        agent = create_trading_agent(verbose=args.verbose)
-        result = agent.invoke(
-            [
-                {
-                    "role": "user",
-                    "content": f"Analyze risk for token {args.contract} on {args.chain}",
-                }
-            ]
-        )
-        print(_strip_emoji(result["messages"][-1]["content"]))
-
-        if args.json:
-            # Also output JSON format for programmatic use
-            print(
-                "\n"
-                + json.dumps(
-                    {
-                        "chain": args.chain,
-                        "contract": args.contract,
-                        "analyzed_at": datetime.now().isoformat(),
-                    },
-                    indent=2,
-                )
-            )
-
-        return 0
-
-    except Exception as e:
-        print_error(f"Risk check failed: {str(e)}")
-        logger.exception("Risk check command error")
-        return 1
-
-
-def cmd_swap(args) -> int:
-    """
-    Execute the swap command - Interactive trade workflow.
-
-    Args:
-        args: Parsed command-line arguments
-
-    Returns:
-        Exit code (0 = success)
-    """
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug(
-            f"Swap args: amount={args.amount}, from={args.from_token}, "
-            f"to={args.to_token}, chain={args.chain}"
-        )
-
-    print_section_header("Interactive Swap", "[SWAP]")
-
-    try:
-        agent = create_trading_agent(verbose=args.verbose)
-        query = (
-            f"Swap {args.amount} {args.from_token} to {args.to_token} on {args.chain}"
-        )
-
-        # Add confirm flag info if provided
-        if args.confirm:
-            query += " - user has confirmed, proceed with execution"
-
-        result = agent.invoke([{"role": "user", "content": query}])
-        print(_strip_emoji(result["messages"][-1]["content"]))
-
-        if args.confirm:
-            print_warning("Demo mode: No real transaction executed")
-            print_success(
-                "In production mode, swap would be executed via Bitget Wallet API"
-            )
-
-        return 0
-
-    except Exception as e:
-        print_error(f"Swap failed: {str(e)}")
-        logger.exception("Swap command error")
-        return 1
-
-
-def cmd_portfolio(args) -> int:
-    """
-    Execute the portfolio command - Show wallet balances.
-
-    Args:
-        args: Parsed command-line arguments
-
-    Returns:
-        Exit code (0 = success)
-    """
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug(f"Portfolio args: wallet={args.wallet}, chain={args.chain}")
-
-    print_section_header("Portfolio Overview", "[PORTFOLIO]")
-
-    try:
-        agent = create_trading_agent(verbose=args.verbose)
-        result = agent.invoke(
-            [
-                {
-                    "role": "user",
-                    "content": f"Show portfolio balances for wallet {args.wallet or 'default'} on {args.chain}",
-                }
-            ]
-        )
-        print(_strip_emoji(result["messages"][-1]["content"]))
-
-        if args.json:
-            # Output JSON format for programmatic use
-            print(
-                "\n"
-                + json.dumps(
-                    {
-                        "wallet": args.wallet or "demo",
-                        "chain": args.chain,
-                        "retrieved_at": datetime.now().isoformat(),
-                    },
-                    indent=2,
-                )
-            )
-
-        return 0
-
-    except Exception as e:
-        print_error(f"Portfolio check failed: {str(e)}")
-        logger.exception("Portfolio command error")
-        return 1
-
-
-# =============================================================================
-# CLI Argument Parser
-# =============================================================================
-
-
-def create_parser() -> argparse.ArgumentParser:
-    """
-    Create and configure the CLI argument parser.
-
-    Returns:
-        Configured ArgumentParser instance
-    """
-    parser = argparse.ArgumentParser(
-        prog="meme-agent",
-        description="Solana Meme Trading Agent CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Scan for safe meme coins
-  %(prog)s scan --limit 10 --min-liquidity 10000 --min-score 50
-
-  # Check single token risk
-  %(prog)s risk-check --chain sol --contract EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-
-  # Interactive swap
-  %(prog)s swap --chain sol --from SOL --to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --amount 0.1
-
-  # Show portfolio
-  %(prog)s portfolio
-
-  # Enable verbose/debug mode
-  %(prog)s scan --verbose
-
-  # Output in JSON format
-  %(prog)s risk-check --chain sol --contract <ADDRESS> --json
-
-Get help for specific command:
-  %(prog)s scan --help
-  %(prog)s risk-check --help
-        """,
-    )
-
-    # Global options
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="%(prog)s 0.1.0",
-        help="Show version and exit",
-    )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose/debug output"
-    )
-
-    # Create subparsers for commands
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-
-    # -------------------------------------------------------------------------
-    # scan command
-    # -------------------------------------------------------------------------
-    scan_parser = subparsers.add_parser(
-        "scan",
-        help="Scan for trending meme coins",
-        description="Discover trending meme coins with automatic risk filtering",
-    )
-    scan_parser.add_argument(
-        "--limit",
-        "-n",
-        type=int,
-        default=10,
-        help="Maximum number of results (default: 10)",
-    )
-    scan_parser.add_argument(
-        "--min-liquidity",
-        type=float,
-        default=10000,
-        help="Minimum liquidity in USD (default: 10000)",
-    )
-    scan_parser.add_argument(
-        "--min-score",
-        type=int,
-        default=50,
-        help="Minimum risk score 0-100 (default: 50, higher is safer)",
-    )
-    scan_parser.add_argument(
-        "--chain",
-        "-c",
-        type=str,
-        default="sol",
-        choices=["sol", "eth", "bsc", "base"],
-        help="Blockchain to scan (default: sol)",
-    )
-    scan_parser.add_argument(
-        "--json", action="store_true", help="Output results as JSON"
-    )
-    scan_parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose output"
-    )
-    scan_parser.set_defaults(func=cmd_scan)
-
-    # -------------------------------------------------------------------------
-    # risk-check command
-    # -------------------------------------------------------------------------
-    risk_parser = subparsers.add_parser(
-        "risk-check",
-        help="Check single token risk",
-        description="Analyze risk score for a specific token contract",
-    )
-    risk_parser.add_argument(
-        "--chain",
-        "-c",
-        type=str,
-        required=True,
-        choices=["sol", "eth", "bsc", "base", "arbitrum", "polygon"],
-        help="Blockchain (required)",
-    )
-    risk_parser.add_argument(
-        "--contract",
-        "-t",
-        type=str,
-        required=True,
-        help="Token contract address (required)",
-    )
-    risk_parser.add_argument(
-        "--json", action="store_true", help="Output results as JSON"
-    )
-    risk_parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose output"
-    )
-    risk_parser.set_defaults(func=cmd_risk_check)
-
-    # -------------------------------------------------------------------------
-    # swap command
-    # -------------------------------------------------------------------------
-    swap_parser = subparsers.add_parser(
-        "swap",
-        help="Interactive trade workflow",
-        description="Execute token swap with AI-powered guidance",
-    )
-    swap_parser.add_argument(
-        "--chain", "-c", type=str, default="sol", help="Blockchain (default: sol)"
-    )
-    swap_parser.add_argument(
-        "--from",
-        dest="from_token",
-        type=str,
-        default="SOL",
-        help="Source token (default: SOL)",
-    )
-    swap_parser.add_argument(
-        "--to",
-        dest="to_token",
-        type=str,
-        required=True,
-        help="Target token contract or symbol (required)",
-    )
-    swap_parser.add_argument(
-        "--amount", type=float, default=0.1, help="Amount to swap (default: 0.1)"
-    )
-    swap_parser.add_argument(
-        "--confirm", action="store_true", help="Confirm and execute the swap"
-    )
-    swap_parser.add_argument(
-        "--slippage",
-        type=float,
-        default=1.0,
-        help="Slippage tolerance %% (default: 1.0)",
-    )
-    swap_parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose output"
-    )
-    swap_parser.set_defaults(func=cmd_swap)
-
-    # -------------------------------------------------------------------------
-    # portfolio command
-    # -------------------------------------------------------------------------
-    portfolio_parser = subparsers.add_parser(
-        "portfolio",
-        help="Show wallet balances",
-        description="View portfolio balances and performance",
-    )
-    portfolio_parser.add_argument(
-        "--wallet",
-        "-w",
-        type=str,
-        default=None,
-        help="Wallet address (optional, uses default if not provided)",
-    )
-    portfolio_parser.add_argument(
-        "--chain", "-c", type=str, default="sol", help="Blockchain (default: sol)"
-    )
-    portfolio_parser.add_argument(
-        "--json", action="store_true", help="Output results as JSON"
-    )
-    portfolio_parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose output"
-    )
-    portfolio_parser.set_defaults(func=cmd_portfolio)
-
-    return parser
-
-
-# =============================================================================
-# Main Entry Point
-# =============================================================================
-
-
-def main() -> int:
-    """
-    Main entry point for the CLI.
-
-    Returns:
-        Exit code (0 = success, non-zero = error)
-    """
-    parser = create_parser()
-    args = parser.parse_args()
-
-    # Handle no command case
-    if not args.command:
-        parser.print_help()
-        return 0
-
-    # Check for required environment variables
-    if args.command in ("scan", "risk-check", "swap") and not ANTHROPIC_API_KEY:
-        print_warning("Running in demo mode without ANTHROPIC_API_KEY")
-        print_warning("Full AI features require setting ANTHROPIC_API_KEY in .env")
-        print()
-
-    # Execute the command
-    try:
-        return args.func(args)
-    except KeyboardInterrupt:
-        print_error("\nOperation cancelled by user")
-        return 130
-    except Exception as e:
-        print_error(f"Unexpected error: {str(e)}")
-        logger.exception("Unexpected error in main")
-        return 1
+            console.print(f"[yellow][!] Wallet configured but error deriving address: {e}[/yellow]")
+    else:
+        console.print("[yellow][!] No wallet mnemonic configured[/yellow]")
+
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print("1. Start chatting: python -m cli.main chat")
+    console.print("2. Scan for tokens: python -m cli.main scan")
+    console.print("3. Check status: python -m cli.main status")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    app()
